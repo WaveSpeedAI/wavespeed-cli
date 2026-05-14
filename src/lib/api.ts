@@ -114,3 +114,94 @@ export function clearModelsCache(): void {
     /* nothing to clear */
   }
 }
+
+// --- Account + prediction endpoints (not exposed by the wavespeed SDK) ---
+
+function authHeaders(): Record<string, string> {
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error('No API key configured. Run `wavespeed login`.');
+  return { Authorization: `Bearer ${apiKey}` };
+}
+
+interface Envelope<T> {
+  code: number;
+  message?: string;
+  data: T;
+}
+
+async function apiGet<T>(path: string): Promise<T> {
+  const res = await fetch(`${getBaseUrl()}${path}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`GET ${path} failed: ${res.status} ${res.statusText}`);
+  const json = (await res.json()) as Envelope<T>;
+  if (json.code !== 200) throw new Error(json.message || `API returned code ${json.code}`);
+  return json.data;
+}
+
+async function apiPost<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${getBaseUrl()}${path}`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`POST ${path} failed: ${res.status} ${res.statusText}`);
+  const json = (await res.json()) as Envelope<T>;
+  if (json.code !== 200) throw new Error(json.message || `API returned code ${json.code}`);
+  return json.data;
+}
+
+export async function fetchBalance(): Promise<{ balance: number }> {
+  return apiGet<{ balance: number }>('/api/v3/balance');
+}
+
+export async function fetchPricing(
+  modelId: string,
+  inputs: Record<string, unknown>,
+): Promise<{ model_id: string; unit_price: number; currency?: string }> {
+  return apiPost('/api/v3/model/pricing', { model_id: modelId, inputs });
+}
+
+export interface HistoryItem {
+  id: string;
+  model: string;
+  status: string;
+  outputs?: (string | Record<string, unknown>)[];
+  inputs?: Record<string, unknown>;
+  input?: Record<string, unknown>;
+  created_at: string;
+  executionTime?: number;
+  error?: string;
+}
+
+export interface HistoryQuery {
+  page?: number;
+  pageSize?: number;
+  model?: string;
+  status?: string;
+  createdAfter?: string;
+  createdBefore?: string;
+}
+
+export async function fetchHistory(
+  query: HistoryQuery = {},
+): Promise<{ page: number; items: HistoryItem[] }> {
+  const now = new Date();
+  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const body: Record<string, unknown> = {
+    page: query.page ?? 1,
+    page_size: query.pageSize ?? 20,
+    created_after: query.createdAfter ?? oneDayAgo.toISOString(),
+    created_before: query.createdBefore ?? now.toISOString(),
+    include_inputs: true,
+  };
+  if (query.model) body.model = query.model;
+  if (query.status) body.status = query.status;
+  return apiPost('/api/v3/predictions', body);
+}
+
+export async function fetchPrediction(id: string): Promise<HistoryItem> {
+  return apiGet<HistoryItem>(`/api/v3/predictions/${id}/result`);
+}
+
+export async function deletePredictions(ids: string[]): Promise<void> {
+  await apiPost('/api/v3/predictions/delete', { ids });
+}

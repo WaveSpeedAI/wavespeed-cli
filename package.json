@@ -1,6 +1,6 @@
 {
   "name": "@wavespeed/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "WaveSpeed CLI — one command to run any WaveSpeed AI model from your terminal.",
   "publishConfig": {
     "access": "public"
@@ -23,7 +23,8 @@
     "prepublishOnly": "npm run build",
     "format": "prettier --write \"src/**/*.ts\"",
     "lint": "tsc --noEmit",
-    "test": "tsx src/cli.ts --version"
+    "test": "vitest run",
+    "test:smoke": "tsx src/cli.ts --version"
   },
   "engines": {
     "node": ">=18"
@@ -61,6 +62,7 @@
     "@types/node": "^20.14.0",
     "prettier": "^3.3.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.6"
   }
 }

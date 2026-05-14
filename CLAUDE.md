@@ -9,10 +9,12 @@ npm install
 npm run dev -- <subcommand> [args]   # run from source via tsx (no build needed)
 npm run build                         # tsc → dist/
 npm run lint                          # tsc --noEmit
+npm test                              # vitest run (unit tests for pure helpers)
+npm run test:smoke                    # `tsx src/cli.ts --version` — boots the CLI
 npm run format                        # prettier on src/**/*.ts
 ```
 
-No automated test suite. Verification is end-to-end against `api.wavespeed.ai` using a real API key. After changes, exercise the affected command in a scratch directory.
+Tests use Vitest and live in `src/**/*.test.ts` alongside the code they cover (excluded from the `tsc` build via `tsconfig.json`'s `exclude`). Add new tests for pure helpers when you touch them. End-to-end command behavior is still verified against `api.wavespeed.ai` with a real API key in a scratch directory — vitest only covers logic, not the HTTP surface.
 
 ## Architecture
 
@@ -40,4 +42,6 @@ No automated test suite. Verification is end-to-end against `api.wavespeed.ai` u
 - `~/.config/wavespeed-nodejs/config.json` (via `conf`) — per-machine: `apiKey`, `baseUrl`, `defaultModel`, `aliases`.
 - `WAVESPEED_API_KEY` env var — the only env var the CLI reads; overrides stored key.
 
-**SDK boundary**: the official `wavespeed` npm SDK only covers `run()` and `upload()`. For `/api/v3/models` and `/api/v3/balance` we fetch directly.
+**SDK boundary**: the official `wavespeed` npm SDK only covers `run()` and `upload()`. Everything else (`/api/v3/models`, `/api/v3/balance`, `/api/v3/model/pricing`, `/api/v3/predictions`, `/api/v3/predictions/<id>/result`, `/api/v3/predictions/delete`) is fetched directly via `apiGet`/`apiPost` helpers in `src/lib/api.ts`.
+
+**Useful page URLs** live in `src/lib/links.ts` — a single map consumed by `wavespeed open` and the `status` footer. Adding/renaming a link is a one-file change.

@@ -14,6 +14,13 @@ import { registerSchema } from './commands/schema.js';
 import { registerAliases } from './commands/aliases.js';
 import { registerInit } from './commands/init.js';
 import { registerSkill } from './commands/skill.js';
+import { registerBalance } from './commands/balance.js';
+import { registerPrice } from './commands/price.js';
+import { registerTopUp } from './commands/topup.js';
+import { registerHistory } from './commands/history.js';
+import { registerShow } from './commands/show.js';
+import { registerDelete } from './commands/delete.js';
+import { registerOpen } from './commands/open.js';
 import { detectRunHelp, printDynamicRunHelp } from './lib/dynamic-help.js';
 
 // Read version from package.json at runtime so a bump in package.json is
@@ -59,6 +66,13 @@ registerDownload(program);
 registerModels(program);
 registerSchema(program);
 registerAliases(program);
+registerBalance(program);
+registerPrice(program);
+registerTopUp(program);
+registerHistory(program);
+registerShow(program);
+registerDelete(program);
+registerOpen(program);
 registerInit(program);
 registerSkill(program);
 

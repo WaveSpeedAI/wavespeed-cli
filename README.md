@@ -7,6 +7,7 @@
   <p><strong>One command, every WaveSpeed model. Image, video, audio, 3D — from your terminal.</strong></p>
   <p>
     <a href="https://wavespeed.ai">🌐 wavespeed.ai</a> •
+    <a href="https://wavespeed.ai/cli">💻 wavespeed.ai/cli</a> •
     <a href="https://wavespeed.ai/models">📚 Models</a> •
     <a href="https://wavespeed.ai/docs">📖 Docs</a> •
     <a href="https://github.com/WaveSpeedAI/wavespeed-cli/issues">🐛 Issues</a>
@@ -114,20 +115,33 @@ The skill teaches the agent the three-step pattern: `models` to find, `run <id> 
 ## Commands
 
 ```
+# auth & config
 wavespeed login                          Browser + paste-key wizard (clipboard-aware)
 wavespeed logout                         Clear stored API key
-wavespeed status                         Show masked key, base URL, paths
+wavespeed status                         Show masked key, base URL, useful links
 wavespeed config [--default-model …]     View / update CLI defaults
 
+# generation
 wavespeed run [model|alias] -p "…"       Run any model or alias (uses defaultModel if omitted)
 wavespeed run <model|alias> -h           Dynamic schema-based help (alias-aware)
 wavespeed schema <model>                 Pretty-print a model's input schema
 wavespeed models [query]                 Browse the live catalog (cached 1h)
 wavespeed aliases                        List aliases from wavespeed.json + user config
 
+# files
 wavespeed upload <file...>               Upload local file(s) → CDN URLs
 wavespeed download <url...>              Save URLs to disk
 
+# account & history
+wavespeed balance                        Show your current credit balance
+wavespeed price <model> -i k=v           Estimate the cost of a run (no charge)
+wavespeed top-up                         Open https://wavespeed.ai/top-up
+wavespeed history [--limit --status …]   List recent predictions (last 24h)
+wavespeed show <id>                      Full details for a past prediction
+wavespeed delete <id...>                 Remove predictions from your history
+
+# misc
+wavespeed open [target]                  Jump to dashboard / models / docs / … in browser
 wavespeed init                           Create a wavespeed.json with defaults + alias stubs
 wavespeed skill install                  Drop SKILL.md for coding agents
 ```

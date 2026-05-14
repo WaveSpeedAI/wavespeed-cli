@@ -1,0 +1,107 @@
+import { Command } from 'commander';
+import chalk from 'chalk';
+import ora from 'ora';
+import { fetchHistory, HistoryItem } from '../lib/api.js';
+
+function statusBadge(status: string): string {
+  const map: Record<string, (s: string) => string> = {
+    completed: chalk.bgGreen.black,
+    failed: chalk.bgRed.white,
+    processing: chalk.bgYellow.black,
+    pending: chalk.bgYellow.black,
+    created: chalk.bgGray.white,
+  };
+  const fn = map[status] ?? chalk.bgGray.white;
+  return fn(` ${status} `);
+}
+
+function formatTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+  } catch {
+    return iso;
+  }
+}
+
+function firstOutput(item: HistoryItem): string {
+  const out = item.outputs?.[0];
+  if (typeof out === 'string') return out;
+  return '';
+}
+
+export function registerHistory(program: Command): void {
+  program
+    .command('history')
+    .description('List your recent predictions (default: last 24h)')
+    .option('--page <n>', 'Page number', '1')
+    .option('--limit <n>', 'Page size (1-100)', '20')
+    .option('--model <id>', 'Filter by model ID')
+    .option('--status <s>', 'Filter by status (completed, failed, processing, pending)')
+    .option('--since <iso>', 'Show predictions created after this ISO timestamp')
+    .option('--until <iso>', 'Show predictions created before this ISO timestamp')
+    .option('--json', 'Emit JSON: {page, items: [...]}')
+    .action(async (opts: any) => {
+      const spinner = !opts.json ? ora('Fetching history…').start() : null;
+      try {
+        const data = await fetchHistory({
+          page: parseInt(opts.page, 10),
+          pageSize: parseInt(opts.limit, 10),
+          model: opts.model,
+          status: opts.status,
+          createdAfter: opts.since,
+          createdBefore: opts.until,
+        });
+        spinner?.stop();
+
+        if (opts.json) {
+          process.stdout.write(JSON.stringify(data, null, 2) + '\n');
+          return;
+        }
+
+        const items = data.items ?? [];
+        console.log();
+        console.log(
+          chalk.bold(`${items.length} prediction${items.length === 1 ? '' : 's'}`) +
+            chalk.gray(`  · page ${data.page}`),
+        );
+        console.log();
+
+        if (items.length === 0) {
+          console.log(chalk.gray('  no predictions in this range. Try --since "2026-01-01" for a wider window.'));
+          console.log();
+          return;
+        }
+
+        for (const item of items) {
+          const promptText =
+            (item.inputs?.prompt as string | undefined) ?? (item.input?.prompt as string | undefined) ?? '';
+          const shortPrompt = promptText.replace(/\s+/g, ' ').trim().slice(0, 60);
+          console.log(
+            statusBadge(item.status) +
+              '  ' +
+              chalk.cyan(item.id) +
+              '  ' +
+              chalk.gray(formatTime(item.created_at)),
+          );
+          console.log('    ' + chalk.gray('model:  ') + chalk.white(item.model));
+          if (shortPrompt) console.log('    ' + chalk.gray('prompt: ') + chalk.white(shortPrompt + (promptText.length > 60 ? '…' : '')));
+          const out = firstOutput(item);
+          if (out) console.log('    ' + chalk.gray('output: ') + chalk.cyan(out));
+          if (item.error) console.log('    ' + chalk.gray('error:  ') + chalk.red(item.error));
+          console.log();
+        }
+
+        console.log(
+          chalk.gray('Details: ') + chalk.cyan('wavespeed show <id>') + chalk.gray('   delete: ') + chalk.cyan('wavespeed delete <id>'),
+        );
+        console.log();
+      } catch (err: any) {
+        spinner?.fail(err.message ?? String(err));
+        if (opts.json) {
+          process.stdout.write(JSON.stringify({ error: err.message ?? String(err) }, null, 2) + '\n');
+        }
+        process.exit(1);
+      }
+    });
+}

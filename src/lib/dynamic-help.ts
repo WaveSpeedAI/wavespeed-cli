@@ -132,6 +132,7 @@ export async function printDynamicRunHelp(token: string): Promise<void> {
         ? chalk.gray('   base price: ') + chalk.green(`$${model.base_price}`)
         : ''),
   );
+  console.log(chalk.gray('  page:  ') + chalk.cyan(`https://wavespeed.ai/models/${model.model_id}`));
   if (model.description) console.log(wrap(model.description, '  '));
   if (aliasDefaults && Object.keys(aliasDefaults).length > 0) {
     console.log();

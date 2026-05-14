@@ -125,6 +125,7 @@ export function registerSchema(program: Command): void {
           chalk.white(model.type ?? 'unknown') +
           (model.base_price !== undefined ? chalk.gray('   base price: ') + chalk.green(`$${model.base_price}`) : ''),
       );
+      console.log(chalk.gray('  page:  ') + chalk.cyan(`https://wavespeed.ai/models/${model.model_id}`));
       if (model.description) {
         console.log(wrap(model.description, '  '));
       }

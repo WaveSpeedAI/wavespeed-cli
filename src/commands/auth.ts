@@ -5,6 +5,7 @@ import open from 'open';
 import ora from 'ora';
 import clipboard from 'clipboardy';
 import { userConfig, getBaseUrl, getApiKey, loadProjectConfig, PROJECT_FILE } from '../lib/config.js';
+import { LINKS } from '../lib/links.js';
 
 const KEY_URL = 'https://wavespeed.ai/accesskey';
 
@@ -159,6 +160,14 @@ export function registerAuth(program: Command): void {
       if (project) {
         console.log('  ' + chalk.gray('Project:    ') + chalk.cyan(PROJECT_FILE) + chalk.gray(' detected'));
       }
+      console.log();
+      console.log(chalk.bold('Useful links'));
+      const width = Math.max(...Object.keys(LINKS).map((k) => k.length));
+      for (const [name, link] of Object.entries(LINKS)) {
+        console.log('  ' + chalk.gray(name.padEnd(width)) + '  ' + chalk.cyan(link.url));
+      }
+      console.log();
+      console.log(chalk.gray('Jump in your browser: ') + chalk.cyan('wavespeed open <target>'));
       console.log();
     });
 
