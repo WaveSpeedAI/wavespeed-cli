@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import chalk from 'chalk';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { printBanner } from './lib/banner.js';
 import { registerAuth } from './commands/auth.js';
 import { registerRun } from './commands/run.js';
@@ -13,7 +16,14 @@ import { registerInit } from './commands/init.js';
 import { registerSkill } from './commands/skill.js';
 import { detectRunHelp, printDynamicRunHelp } from './lib/dynamic-help.js';
 
-const VERSION = '0.1.0';
+// Read version from package.json at runtime so a bump in package.json is
+// reflected automatically (no second place to keep in sync).
+const VERSION: string = (() => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  // dist/cli.js → ../package.json (one level up because files: ["dist", ...])
+  const pkgPath = path.resolve(here, '..', 'package.json');
+  return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version as string;
+})();
 
 const program = new Command();
 program
