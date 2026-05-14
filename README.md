@@ -1,1 +1,158 @@
-# cli
+<div align="center">
+  <a href="https://wavespeed.ai" target="_blank">
+    <img src="https://raw.githubusercontent.com/WaveSpeedAI/waverless/main/docs/images/wavespeed-dark-logo.png" alt="WaveSpeedAI Logo" width="200"/>
+  </a>
+
+  <h1>WaveSpeed CLI</h1>
+  <p><strong>One command, every WaveSpeed model. Image, video, audio, 3D — from your terminal.</strong></p>
+  <p>
+    <a href="https://wavespeed.ai">🌐 wavespeed.ai</a> •
+    <a href="https://wavespeed.ai/models">📚 Models</a> •
+    <a href="https://wavespeed.ai/docs">📖 Docs</a> •
+    <a href="https://github.com/WaveSpeedAI/cli/issues">🐛 Issues</a>
+  </p>
+  <p>
+    <a href="https://www.npmjs.com/package/wavespeed"><img alt="npm" src="https://img.shields.io/npm/v/wavespeed?style=flat-square&color=7c5cff"></a>
+    <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-7c5cff?style=flat-square"></a>
+    <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A518-7c5cff?style=flat-square">
+  </p>
+</div>
+
+---
+
+## Features
+
+- 🚀 **Every WaveSpeed model** — image, video, audio, 3D; the full live catalog, not a curated subset
+- 🧬 **Dynamic per-model help** — `wavespeed run <id> -h` introspects the real input schema
+- 🔗 **Aliases** — named shortcuts in `wavespeed.json` that bundle a model + default inputs
+- 🤖 **Agent-native** — pipe-safe `--json`, drops a `SKILL.md` for Claude Code / Cursor / Codex
+- ✨ **Zero-friction auth** — browser-launching, clipboard-aware login with live key validation
+
+## Install
+
+```bash
+# npm
+npm install -g wavespeed
+
+# or curl
+curl -fsSL https://wavespeed.ai/install | bash
+
+# sign in (opens the access-key page, paste to confirm)
+wavespeed login
+```
+
+## Quick start
+
+```bash
+# 1. Browse the catalog
+wavespeed models                              # browse the full live catalog, grouped by type
+wavespeed models "nano banana"                # search
+wavespeed models --type text-to-video         # filter by modality
+
+# 2. Inspect a model's inputs (dynamic — fetched live)
+wavespeed run google/nano-banana-2/text-to-image -h
+
+# 3. Run it (URLs print to stdout; no files unless you ask)
+wavespeed run google/nano-banana-2/text-to-image \
+  -p "a cyberpunk skyline at golden hour" \
+  -i aspect_ratio="16:9" -i resolution="2k"
+
+# Save outputs locally
+wavespeed run ... -p "..." --download                       # → ./wavespeed-output/
+wavespeed run ... -p "..." --download "./hero.png"          # exact path
+wavespeed run ... -p "..." --download "./out/{index}.{ext}" # templated for batches
+
+# Pipe-safe JSON
+wavespeed run ... -p "..." --json | jq '.outputs[0]'
+```
+
+## Project config (`wavespeed.json`)
+
+`wavespeed init` writes one. Drop it into git so the whole team shares the same defaults.
+
+```jsonc
+{
+  "defaultModel": "google/nano-banana-2/text-to-image",
+  "outputDir": "wavespeed-output",
+  "aliases": {
+    "hero":   { "model": "google/nano-banana-2/text-to-image",
+                "input": { "aspect_ratio": "16:9", "resolution": "2k" } },
+    "social": { "model": "google/nano-banana-2/text-to-image",
+                "input": { "aspect_ratio": "1:1",  "resolution": "1k" } },
+    "vid":    { "model": "bytedance/seedance-2.0/text-to-video",
+                "input": { "resolution": "720p", "duration": 5 } }
+  }
+}
+```
+
+- **`defaultModel`** — `wavespeed run -p "…"` (no model arg) uses this. Can itself be an alias name.
+- **`aliases`** — your own shortcuts. `wavespeed run hero -p "…"` expands to model + input. CLI `-i k=v` flags override. `wavespeed run hero -h` shows the resolved schema. List them with `wavespeed aliases`.
+
+Resolution: positional with `/` is a model ID; otherwise looked up as an alias. Merge order on inputs: `alias.input` → `--input-file` → `-i k=v` → `-p`. **The CLI never mutates the user's prompt or inputs** — what you pass is what hits the API.
+
+## Recommended starting models
+
+| Use case | Model |
+|---|---|
+| Text → image | `google/nano-banana-2/text-to-image` |
+| Image edit | `google/nano-banana-2/edit` |
+| Text → video | `bytedance/seedance-2.0/text-to-video` |
+| Image → video | `bytedance/seedance-2.0/image-to-video` |
+
+Browse alternatives with `wavespeed models <query>`.
+
+## Use from coding agents
+
+No MCP server, no daemon. The CLI **is** the interface — agents already know how to run shell commands.
+
+```bash
+wavespeed skill install        # writes .claude/skills/wavespeed/SKILL.md
+```
+
+The skill teaches the agent the three-step pattern: `models` to find, `run <id> -h` to discover params, `run <id> -p "…" --json` to execute. Every command supports `--json` for clean piping.
+
+## Commands
+
+```
+wavespeed login                          Browser + paste-key wizard (clipboard-aware)
+wavespeed logout                         Clear stored API key
+wavespeed status                         Show masked key, base URL, paths
+wavespeed config [--default-model …]     View / update CLI defaults
+
+wavespeed run [model|alias] -p "…"       Run any model or alias (uses defaultModel if omitted)
+wavespeed run <model|alias> -h           Dynamic schema-based help (alias-aware)
+wavespeed schema <model>                 Pretty-print a model's input schema
+wavespeed models [query]                 Browse the live catalog (cached 1h)
+wavespeed aliases                        List aliases from wavespeed.json + user config
+
+wavespeed upload <file...>               Upload local file(s) → CDN URLs
+wavespeed download <url...>              Save URLs to disk
+
+wavespeed init                           Create a wavespeed.json with defaults + alias stubs
+wavespeed skill install                  Drop SKILL.md for coding agents
+```
+
+## Auth
+
+| | Use when |
+|---|---|
+| `wavespeed login` | Persistent, one machine, one user. Stored in `~/.config/wavespeed-nodejs/config.json`. |
+| `WAVESPEED_API_KEY=… wavespeed run …` | CI, scripts, one-off shells. Env var wins over stored config. |
+
+Get a key at [wavespeed.ai/accesskey](https://wavespeed.ai/accesskey).
+
+## Development
+
+```bash
+git clone https://github.com/WaveSpeedAI/cli.git
+cd cli
+npm install
+npm run dev -- run google/nano-banana-2/text-to-image -p "a serene mountain lake"
+npm run build && npm link
+```
+
+Stack: TypeScript, Commander, Inquirer, Chalk, Ora, the official `wavespeed` SDK.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

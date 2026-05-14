@@ -1,0 +1,62 @@
+{
+  "name": "wavespeed",
+  "version": "0.1.0",
+  "description": "WaveSpeed CLI — one command to run any WaveSpeed AI model from your terminal.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "wavespeed": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js",
+    "prepublishOnly": "npm run build",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "lint": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "wavespeed",
+    "ai",
+    "cli",
+    "image-generation",
+    "video-generation",
+    "generative-ai",
+    "creative-tools"
+  ],
+  "author": "WaveSpeedAI <support@wavespeed.ai>",
+  "license": "MIT",
+  "homepage": "https://wavespeed.ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/WaveSpeedAI/cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/WaveSpeedAI/cli/issues"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.0.0",
+    "chalk": "^5.3.0",
+    "clipboardy": "^4.0.0",
+    "commander": "^12.1.0",
+    "conf": "^13.0.0",
+    "open": "^10.1.0",
+    "ora": "^8.1.0",
+    "wavespeed": "^0.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "prettier": "^3.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}

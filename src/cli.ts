@@ -1,0 +1,81 @@
+#!/usr/bin/env node
+import { Command } from 'commander';
+import chalk from 'chalk';
+import { printBanner } from './lib/banner.js';
+import { registerAuth } from './commands/auth.js';
+import { registerRun } from './commands/run.js';
+import { registerUpload } from './commands/upload.js';
+import { registerDownload } from './commands/download.js';
+import { registerModels } from './commands/models.js';
+import { registerSchema } from './commands/schema.js';
+import { registerAliases } from './commands/aliases.js';
+import { registerInit } from './commands/init.js';
+import { registerSkill } from './commands/skill.js';
+import { detectRunHelp, printDynamicRunHelp } from './lib/dynamic-help.js';
+
+const VERSION = '0.1.0';
+
+const program = new Command();
+program
+  .name('wavespeed')
+  .description('WaveSpeed CLI — one command to run any WaveSpeed AI model from your terminal.')
+  .version(VERSION, '-v, --version', 'Print the CLI version')
+  .addHelpText(
+    'beforeAll',
+    chalk.hex('#7c5cff').bold('\n  wavespeed  ') + chalk.gray(`v${VERSION}  ·  every WaveSpeed model  ·  open source\n`),
+  )
+  .addHelpText(
+    'after',
+    `
+${chalk.bold('Quick start:')}
+  ${chalk.cyan('$ wavespeed login')}
+  ${chalk.cyan('$ wavespeed models                                                # browse the catalog')}
+  ${chalk.cyan('$ wavespeed run google/nano-banana-2/text-to-image -h             # see the model\'s flags')}
+  ${chalk.cyan('$ wavespeed run google/nano-banana-2/text-to-image -p "a cyberpunk skyline"')}
+  ${chalk.cyan('$ wavespeed run bytedance/seedance-2.0/text-to-video -p "drone shot over snowy peaks"')}
+
+${chalk.bold('Use from any coding agent (Claude Code, Cursor, Codex):')}
+  ${chalk.cyan('$ wavespeed skill install')}   ${chalk.gray('# drops a SKILL.md so the agent knows how to call wavespeed')}
+  ${chalk.gray('# agents just shell out: `wavespeed run <id> --json` — no MCP setup.')}
+
+${chalk.gray('Docs:')} ${chalk.cyan('https://wavespeed.ai/docs')}    ${chalk.gray('Models:')} ${chalk.cyan('https://wavespeed.ai/models')}
+`,
+  );
+
+registerAuth(program);
+registerRun(program);
+registerUpload(program);
+registerDownload(program);
+registerModels(program);
+registerSchema(program);
+registerAliases(program);
+registerInit(program);
+registerSkill(program);
+
+program
+  .command('hello', { hidden: true })
+  .description('Print the WaveSpeed banner')
+  .action(() => printBanner());
+
+// Show banner + help when run with no args
+if (process.argv.length <= 2) {
+  printBanner();
+  program.outputHelp();
+  process.exit(0);
+}
+
+async function main(): Promise<void> {
+  // Intercept `wavespeed run <model> --help` so we can introspect the model's
+  // schema and print model-specific flags instead of Commander's static help.
+  const dynamicModel = detectRunHelp(process.argv);
+  if (dynamicModel) {
+    await printDynamicRunHelp(dynamicModel);
+    // If schema lookup failed, fall through to Commander's static help.
+  }
+  await program.parseAsync(process.argv);
+}
+
+main().catch((err) => {
+  console.error(chalk.red('Error: ') + (err.message ?? String(err)));
+  process.exit(1);
+});

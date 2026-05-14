@@ -1,0 +1,9 @@
+src
+node_modules
+.gitignore
+tsconfig.json
+.github
+.vscode
+*.log
+wavespeed-output
+.wavespeed
