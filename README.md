@@ -9,7 +9,7 @@
     <a href="https://wavespeed.ai">🌐 wavespeed.ai</a> •
     <a href="https://wavespeed.ai/models">📚 Models</a> •
     <a href="https://wavespeed.ai/docs">📖 Docs</a> •
-    <a href="https://github.com/WaveSpeedAI/cli/issues">🐛 Issues</a>
+    <a href="https://github.com/WaveSpeedAI/wavespeed-cli/issues">🐛 Issues</a>
   </p>
   <p>
     <a href="https://www.npmjs.com/package/@wavespeed/cli"><img alt="npm" src="https://img.shields.io/npm/v/@wavespeed/cli?style=flat-square&color=7c5cff"></a>
@@ -144,7 +144,7 @@ Get a key at [wavespeed.ai/accesskey](https://wavespeed.ai/accesskey).
 ## Development
 
 ```bash
-git clone https://github.com/WaveSpeedAI/cli.git
+git clone https://github.com/WaveSpeedAI/wavespeed-cli.git
 cd cli
 npm install
 npm run dev -- run google/nano-banana-2/text-to-image -p "a serene mountain lake"
