@@ -22,7 +22,8 @@
     "start": "node dist/cli.js",
     "prepublishOnly": "npm run build",
     "format": "prettier --write \"src/**/*.ts\"",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "tsx src/cli.ts --version"
   },
   "engines": {
     "node": ">=18"
