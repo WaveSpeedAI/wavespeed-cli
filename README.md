@@ -47,16 +47,16 @@ wavespeed login
 ```bash
 # 1. Browse the catalog
 wavespeed models                              # browse the full live catalog, grouped by type
-wavespeed models "nano banana"                # search
+wavespeed models "z-image"                    # search
 wavespeed models --type text-to-video         # filter by modality
 
 # 2. Inspect a model's inputs (dynamic — fetched live)
-wavespeed run google/nano-banana-2/text-to-image -h
+wavespeed run wavespeed-ai/z-image/turbo -h
 
-# 3. Run it (URLs print to stdout; no files unless you ask)
-wavespeed run google/nano-banana-2/text-to-image \
-  -p "a cyberpunk skyline at golden hour" \
-  -i aspect_ratio="16:9" -i resolution="2k"
+# 3. Run it (URLs print to stdout; no files unless you ask).
+#    z-image/turbo returns in ~5s, a good default for trying the CLI.
+wavespeed run wavespeed-ai/z-image/turbo \
+  -p "a cyberpunk skyline at golden hour"
 
 # Save outputs locally
 wavespeed run ... -p "..." --download                       # → ./wavespeed-output/
@@ -161,7 +161,7 @@ Get a key at [wavespeed.ai/accesskey](https://wavespeed.ai/accesskey).
 git clone https://github.com/WaveSpeedAI/wavespeed-cli.git
 cd cli
 npm install
-npm run dev -- run google/nano-banana-2/text-to-image -p "a serene mountain lake"
+npm run dev -- run wavespeed-ai/z-image/turbo -p "a serene mountain lake"
 npm run build && npm link
 ```
 

@@ -76,7 +76,7 @@ export function registerSchema(program: Command): void {
   program
     .command('schema')
     .description('Show the input schema for a model — what params it accepts and which are required')
-    .argument('<model>', 'Model ID (e.g. google/nano-banana-2/edit). Run `wavespeed models` to find them.')
+    .argument('<model>', 'Model ID (e.g. wavespeed-ai/z-image/turbo). Run `wavespeed models` to find them.')
     .option('--json', 'Emit the raw JSON schema on stdout')
     .option('--refresh', 'Force a live fetch (bypass the 1h cache)')
     .action(async (modelId: string, opts: { json?: boolean; refresh?: boolean }) => {
