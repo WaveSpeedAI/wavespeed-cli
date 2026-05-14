@@ -12,7 +12,7 @@
     <a href="https://github.com/WaveSpeedAI/cli/issues">🐛 Issues</a>
   </p>
   <p>
-    <a href="https://www.npmjs.com/package/wavespeed"><img alt="npm" src="https://img.shields.io/npm/v/wavespeed?style=flat-square&color=7c5cff"></a>
+    <a href="https://www.npmjs.com/package/@wavespeed/cli"><img alt="npm" src="https://img.shields.io/npm/v/@wavespeed/cli?style=flat-square&color=7c5cff"></a>
     <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-7c5cff?style=flat-square"></a>
     <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A518-7c5cff?style=flat-square">
   </p>
@@ -32,7 +32,7 @@
 
 ```bash
 # npm
-npm install -g wavespeed
+npm install -g @wavespeed/cli
 
 # or curl
 curl -fsSL https://wavespeed.ai/install | bash

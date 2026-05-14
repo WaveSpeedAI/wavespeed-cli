@@ -32,7 +32,7 @@ if ! command -v npm >/dev/null 2>&1; then
 fi
 
 echo -e "${GRAY}Installing ${BOLD}wavespeed${NC}${GRAY} globally with npm…${NC}"
-if npm install -g wavespeed; then
+if npm install -g @wavespeed/cli; then
   :
 else
   echo
