@@ -1,6 +1,6 @@
 {
   "name": "@wavespeed/cli",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "WaveSpeed CLI — one command to run any WaveSpeed AI model from your terminal.",
   "publishConfig": {
     "access": "public"
