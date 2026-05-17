@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # WaveSpeed CLI installer
-# Usage: curl -fsSL https://wavespeed.ai/install | bash
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/WaveSpeedAI/wavespeed-cli/main/install.sh | bash
 set -euo pipefail
 
 PURPLE='\033[38;5;141m'
@@ -47,5 +48,5 @@ echo
 echo -e "${BOLD}Next:${NC}"
 echo -e "  wavespeed login"
 echo -e "  wavespeed models                 # browse the catalog"
-echo -e "  wavespeed run google/nano-banana-2/text-to-image -p \"a cyberpunk skyline at golden hour\""
+echo -e "  wavespeed run wavespeed-ai/z-image/turbo -p \"a cyberpunk skyline at golden hour\"   # ~5s"
 echo

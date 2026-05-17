@@ -35,8 +35,9 @@
 # npm
 npm install -g @wavespeed/cli
 
-# or curl
-curl -fsSL https://wavespeed.ai/install | bash
+# or curl (script lives on GitHub; wraps `npm install -g` with a
+# friendlier error path)
+curl -fsSL https://raw.githubusercontent.com/WaveSpeedAI/wavespeed-cli/main/install.sh | bash
 
 # sign in (opens the access-key page, paste to confirm)
 wavespeed login
