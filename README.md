@@ -124,6 +124,7 @@ wavespeed config [--default-model …]     View / update CLI defaults
 
 # generation
 wavespeed run [model|alias] -p "…"       Run any model or alias (uses defaultModel if omitted)
+wavespeed run <model|alias> --sync       Attempt sync wait; timed-out tasks remain queryable
 wavespeed run <model|alias> -h           Dynamic schema-based help (alias-aware)
 wavespeed schema <model>                 Pretty-print a model's input schema
 wavespeed models [query]                 Browse the live catalog (cached 1h)

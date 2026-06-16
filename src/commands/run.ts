@@ -19,6 +19,29 @@ function extractUrls(output: any): string[] {
   return [];
 }
 
+type SyncTimeoutDetails = {
+  predictionId?: string;
+  resultUrl?: string;
+};
+
+function cleanTrailingPunctuation(value: string): string {
+  return value.replace(/[).,]+$/, '');
+}
+
+function extractSyncTimeoutDetails(message: string): SyncTimeoutDetails | null {
+  if (!message.includes('Sync mode timed out')) return null;
+
+  const taskIdMatch =
+    message.match(/task_id:\s*([^)]+)/) ??
+    message.match(/Prediction ID:\s*([^\s.]+)/);
+  const resultUrlMatch = message.match(/Query the result later at:\s*(\S+)/);
+
+  return {
+    predictionId: taskIdMatch?.[1] ? cleanTrailingPunctuation(taskIdMatch[1]) : undefined,
+    resultUrl: resultUrlMatch?.[1] ? cleanTrailingPunctuation(resultUrlMatch[1]) : undefined,
+  };
+}
+
 function failMissingModel(): never {
   const msg =
     'No model specified. Pass a model ID as the first argument, ' +
@@ -51,7 +74,7 @@ export function registerRun(program: Command): void {
     .option('-p, --prompt <text>', 'Shorthand for --input prompt=<text>')
     .option('--input-file <path>', 'JSON file with full input object')
     .option('--download [path]', 'Save outputs locally (optional path template, e.g. "./out/{index}.{ext}")')
-    .option('--sync', 'Use synchronous mode (single request, no polling)')
+    .option('--sync', 'Attempt sync mode; timed-out tasks can still be queried later')
     .option('--json', 'Emit a single JSON object on stdout (progress goes to stderr)')
     .option('--output-dir <dir>', 'Directory for --download when no path is given')
     .action(async (modelArg: string | undefined, opts: any) => {
@@ -101,8 +124,38 @@ export function registerRun(program: Command): void {
         }
         spinner.succeed(`Done in ${Math.floor((Date.now() - startedAt) / 1000)}s.`);
       } catch (err: any) {
-        spinner.fail(err.message ?? String(err));
-        if (isJsonMode()) emitJsonError(err.message ?? String(err));
+        const message = err.message ?? String(err);
+        const syncTimeout = opts.sync ? extractSyncTimeoutDetails(message) : null;
+
+        if (syncTimeout && !isJsonMode()) {
+          spinner.fail('Sync mode timed out; the task is still processing asynchronously.');
+          log(chalk.gray('  reason: ') + message);
+          if (syncTimeout.predictionId) {
+            log(chalk.gray('  prediction: ') + chalk.white(syncTimeout.predictionId));
+            log(chalk.gray('  query:      ') + chalk.cyan(`wavespeed show ${syncTimeout.predictionId}`));
+          }
+          if (syncTimeout.resultUrl) {
+            log(chalk.gray('  result URL: ') + chalk.cyan(syncTimeout.resultUrl));
+          }
+        } else {
+          spinner.fail(message);
+        }
+
+        if (isJsonMode()) {
+          emitJsonError(
+            message,
+            syncTimeout
+              ? {
+                  sync_timeout: true,
+                  prediction_id: syncTimeout.predictionId,
+                  result_url: syncTimeout.resultUrl,
+                  query_command: syncTimeout.predictionId
+                    ? `wavespeed show ${syncTimeout.predictionId}`
+                    : undefined,
+                }
+              : {},
+          );
+        }
         process.exit(1);
       }
 
