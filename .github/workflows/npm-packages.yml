@@ -8,18 +8,28 @@ on:
       - "v[0-9]+*"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
+    if: >-
+      github.repository == 'WaveSpeedAI/wavespeed-cli' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      (github.ref == 'refs/heads/main' ||
+       (github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')))
+    environment: package-build
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       with:
         fetch-depth: 0
+        persist-credentials: false
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       with:
         node-version: '20'
         cache: 'npm'
@@ -42,7 +52,7 @@ jobs:
       run: npm pack
 
     - run: ls -lh *.tgz
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:
         name: npm-packages
         path: |
@@ -52,15 +62,22 @@ jobs:
   gh_release:
     name: gh_release
     needs: build
+    if: >-
+      github.repository == 'WaveSpeedAI/wavespeed-cli' &&
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' ||
+       (github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')))
+    environment: github-release
     runs-on: ubuntu-latest
-    permissions: write-all
+    permissions:
+      contents: write
 
     timeout-minutes: 60
     defaults:
       run:
         shell: bash
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: dist
 
@@ -69,7 +86,7 @@ jobs:
       # create nightly release if it's a push to main
       - if: github.repository == 'WaveSpeedAI/wavespeed-cli' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         name: Nightly Release
-        uses: andelf/nightly-release@v1
+        uses: andelf/nightly-release@c5ed4bdb7c1da04a4fa1e40bc5e67306f682563b # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -83,7 +100,7 @@ jobs:
       # create release if it's a tag like vx.y.z
       - if: github.repository == 'WaveSpeedAI/wavespeed-cli' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
         name: Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           files: |
             dist/*/*.tgz
