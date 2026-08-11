@@ -1,6 +1,6 @@
 {
   "name": "@wavespeed/cli",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "WaveSpeed CLI — one command to run any WaveSpeed AI model from your terminal.",
   "publishConfig": {
     "access": "public"
@@ -56,7 +56,7 @@
     "conf": "^13.0.0",
     "open": "^10.1.0",
     "ora": "^8.1.0",
-    "wavespeed": "^0.2.1"
+    "wavespeed": "^0.2.6"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
