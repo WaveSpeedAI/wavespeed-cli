@@ -96,7 +96,7 @@ export async function fetchModels(opts: FetchModelsOptions = {}): Promise<{
     headers: { Authorization: `Bearer ${apiKey}` },
   });
   if (!res.ok) {
-    throw new Error(`GET /api/v3/models failed: ${res.status} ${res.statusText}`);
+    throw await httpError(res, 'GET', '/api/v3/models');
   }
   const json = (await res.json()) as ModelsEnvelope;
   if (json.code !== 200) {
@@ -129,9 +129,27 @@ interface Envelope<T> {
   data: T;
 }
 
+// Non-2xx responses still carry the platform's error envelope, and for
+// permission failures that body is the whole point: it names the role that
+// created the key and a role whose key would work. Throwing only the status
+// line turned every 403 into an unactionable "403 Forbidden".
+async function httpError(res: Response, method: string, path: string): Promise<Error> {
+  let detail = '';
+  try {
+    const body = (await res.json()) as { message?: string; error_code?: string };
+    if (body?.message) {
+      detail = body.error_code ? `${body.message} [${body.error_code}]` : body.message;
+    }
+  } catch {
+    /* non-JSON body (gateway error page, empty response) — fall back below */
+  }
+  if (detail) return new Error(detail);
+  return new Error(`${method} ${path} failed: ${res.status} ${res.statusText}`);
+}
+
 async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${getBaseUrl()}${path}`, { headers: authHeaders() });
-  if (!res.ok) throw new Error(`GET ${path} failed: ${res.status} ${res.statusText}`);
+  if (!res.ok) throw await httpError(res, 'GET', path);
   const json = (await res.json()) as Envelope<T>;
   if (json.code !== 200) throw new Error(json.message || `API returned code ${json.code}`);
   return json.data;
@@ -143,7 +161,7 @@ async function apiPost<T>(path: string, body: unknown): Promise<T> {
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`POST ${path} failed: ${res.status} ${res.statusText}`);
+  if (!res.ok) throw await httpError(res, 'POST', path);
   const json = (await res.json()) as Envelope<T>;
   if (json.code !== 200) throw new Error(json.message || `API returned code ${json.code}`);
   return json.data;

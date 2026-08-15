@@ -38,6 +38,10 @@ async function validateKey(
 ): Promise<{ ok: boolean; status?: number; reason?: string }> {
   // The platform doesn't expose a dedicated /whoami yet, so we ping a known
   // authenticated endpoint and treat anything that isn't 401/403 as "key works".
+  // Note this proves the key is live, not that it can run models: /balance is
+  // deliberately open to every key regardless of the creator's org role, so a
+  // Billing-created key logs in here and only fails at `run`, which now
+  // surfaces the API's explanation of why.
   let res: Response | null = null;
   try {
     res = await fetch(`${baseUrl}/api/v3/balance`, {
