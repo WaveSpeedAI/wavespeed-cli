@@ -5,6 +5,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { requireClient } from '../lib/client.js';
 import { parseInputs } from '../lib/inputs.js';
+import { resolveLocalFiles } from '../lib/local-files.js';
 import { downloadOutputs, printOutputs } from '../lib/output.js';
 import { emitJson, emitJsonError, isJsonMode, log, setJsonMode } from '../lib/log.js';
 import { downloadOptsFromFlag } from '../lib/download-flag.js';
@@ -54,6 +55,12 @@ function failMissingModel(): never {
   process.exit(1);
 }
 
+function failWith(msg: string): never {
+  if (isJsonMode()) emitJsonError(msg);
+  else console.error(chalk.red('Error: ') + msg);
+  process.exit(1);
+}
+
 function failUnknownAlias(token: string): never {
   const msg = `"${token}" is neither a model ID (no \`/\`) nor a known alias.`;
   if (isJsonMode()) emitJsonError(msg);
@@ -70,7 +77,7 @@ export function registerRun(program: Command): void {
     .command('run')
     .description('Run any Wavespeed model — generic invoke with --input key=value pairs')
     .argument('[model]', 'Model ID, alias name, or omit to use defaultModel.')
-    .option('-i, --input <pair...>', 'Inputs as key=value (repeatable). Use dotted keys for nested.', [])
+    .option('-i, --input <pair...>', 'Inputs as key=value (repeatable). Local media paths auto-upload; @path forces upload. Dotted keys nest.', [])
     .option('-p, --prompt <text>', 'Shorthand for --input prompt=<text>')
     .option('--input-file <path>', 'JSON file with full input object')
     .option('--download [path]', 'Save outputs locally (optional path template, e.g. "./out/{index}.{ext}")')
@@ -99,6 +106,32 @@ export function registerRun(program: Command): void {
       }
       Object.assign(input, parseInputs(opts.input ?? []));
       if (opts.prompt) input.prompt = opts.prompt;
+
+      // Local paths become hosted URLs before submission. Uploads go straight
+      // to object storage via a presigned PUT, so this is one extra round trip
+      // per distinct file rather than a reason to make the user run `upload`
+      // first and paste the result back.
+      try {
+        const uploadSpinner = !isJsonMode() ? ora({ color: 'magenta' }) : null;
+        const resolved = await resolveLocalFiles(input, {
+          upload: (file) => client.upload(file),
+          onUpload: (file, i, total) => {
+            uploadSpinner?.start(
+              total > 1
+                ? `Uploading ${path.basename(file)} (${i + 1}/${total})…`
+                : `Uploading ${path.basename(file)}…`,
+            );
+          },
+        });
+        if (resolved.uploaded > 0) {
+          uploadSpinner?.succeed(
+            `Uploaded ${resolved.uploaded} file${resolved.uploaded === 1 ? '' : 's'}.`,
+          );
+        }
+        input = resolved.input;
+      } catch (err: any) {
+        failWith(err.message ?? String(err));
+      }
 
       log('');
       log(

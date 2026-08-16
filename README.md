@@ -90,7 +90,9 @@ wavespeed run ... -p "..." --json | jq '.outputs[0]'
 - **`defaultModel`** — `wavespeed run -p "…"` (no model arg) uses this. Can itself be an alias name.
 - **`aliases`** — your own shortcuts. `wavespeed run hero -p "…"` expands to model + input. CLI `-i k=v` flags override. `wavespeed run hero -h` shows the resolved schema. List them with `wavespeed aliases`.
 
-Resolution: positional with `/` is a model ID; otherwise looked up as an alias. Merge order on inputs: `alias.input` → `--input-file` → `-i k=v` → `-p`. **The CLI never mutates the user's prompt or inputs** — what you pass is what hits the API.
+Resolution: positional with `/` is a model ID; otherwise looked up as an alias. Merge order on inputs: `alias.input` → `--input-file` → `-i k=v` → `-p`. **The CLI never rewrites your prompt or input values**, with one explicit exception: local file paths become hosted URLs.
+
+**Local files as inputs.** `-i image=./cat.png` uploads the file first and submits its URL — no separate `wavespeed upload` step. A bare value is only treated as a file when it has a media extension (image/video/audio) *and* exists on disk; prompt fields never auto-detect. Prefix with `@` (`-i image=@./cat.png`) to force an upload of any file — then a missing file is an error instead of a pass-through. The same file referenced twice uploads once.
 
 ## Recommended starting models
 
