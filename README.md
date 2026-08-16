@@ -152,6 +152,16 @@ wavespeed init                           Create a wavespeed.json with defaults +
 wavespeed skill install                  Drop SKILL.md for coding agents
 ```
 
+**Pricing is an estimate.** `wavespeed price` quotes from the model's pricing
+formula, and many models bill from an input — audio/video duration, frame count,
+text length. Those inputs are optional in the quote: ask for a price without
+them and the formula collapses to the model's **base price**, which is the floor
+of its range, not a typical run. `wavespeed price wavespeed-ai/infinitetalk`
+says `$0.15`; a 60s audio actually bills `$1.80`. The command names the inputs it
+was blind to (`unpriced_inputs` / `at_base_price` in `--json`) — supply them for
+a real quote. Whatever it says, the amount actually charged for a run is
+authoritative.
+
 ## Auth
 
 | | Use when |
