@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import fs from 'node:fs';
 import { requireClient } from '../lib/client.js';
+import { uploadWithCache } from '../lib/upload-cache.js';
 
 export function registerUpload(program: Command): void {
   program
@@ -27,9 +28,9 @@ export function registerUpload(program: Command): void {
       for (const file of files) {
         const spinner = !opts.json ? ora(`Uploading ${file}…`).start() : null;
         try {
-          const url = await client.upload(file);
+          const { url, cached } = await uploadWithCache(file, (f) => client.upload(f));
           urls.push(url);
-          spinner?.succeed(`${file} → ${url}`);
+          spinner?.succeed(`${file} → ${url}` + (cached ? ' (cached)' : ''));
         } catch (err: any) {
           const message = err.message ?? String(err);
           errors.push({ file, error: message });

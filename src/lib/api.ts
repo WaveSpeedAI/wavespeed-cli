@@ -171,11 +171,21 @@ export async function fetchBalance(): Promise<{ balance: number }> {
   return apiGet<{ balance: number }>('/api/v3/balance');
 }
 
+export interface ModelPrice {
+  model_id: string;
+  price: number;
+  discounted_price: number;
+  discount_rate?: number;
+  currency?: string;
+}
+
 export async function fetchPricing(
   modelId: string,
   inputs: Record<string, unknown>,
-): Promise<{ model_id: string; unit_price: number; currency?: string }> {
-  return apiPost('/api/v3/model/pricing', { model_id: modelId, inputs });
+): Promise<ModelPrice> {
+  // /model/price is the documented pricing endpoint; /model/pricing is a
+  // legacy contract kept for old clients and absent from the public docs.
+  return apiPost('/api/v3/model/price', { model_id: modelId, inputs });
 }
 
 export interface HistoryItem {
@@ -209,7 +219,6 @@ export async function fetchHistory(
     page_size: query.pageSize ?? 20,
     created_after: query.createdAfter ?? oneDayAgo.toISOString(),
     created_before: query.createdBefore ?? now.toISOString(),
-    include_inputs: true,
   };
   if (query.model) body.model = query.model;
   if (query.status) body.status = query.status;
@@ -222,4 +231,125 @@ export async function fetchPrediction(id: string): Promise<HistoryItem> {
 
 export async function deletePredictions(ids: string[]): Promise<void> {
   await apiPost('/api/v3/predictions/delete', { ids });
+}
+
+// Server-side prediction status enum (api-server internal/model/prediction.go).
+// Validated client-side so `--status pending` fails with the real list instead
+// of a server 400 or a silently empty page.
+export const PREDICTION_STATUSES = [
+  'created',
+  'processing',
+  'completed',
+  'failed',
+  'cancelled',
+  'timeout',
+] as const;
+
+export interface SubmitResult {
+  id: string;
+  status: string;
+  outputs?: (string | Record<string, unknown>)[];
+  error?: string;
+  urls?: { get?: string };
+  model?: string;
+}
+
+/**
+ * Submit a prediction WITHOUT waiting for it. Split from polling so the
+ * caller can print the prediction ID the moment it exists — a Ctrl+C or
+ * dropped connection mid-generation must never orphan a paid task.
+ */
+export async function submitPrediction(
+  model: string,
+  input: Record<string, unknown>,
+  opts: { sync?: boolean } = {},
+): Promise<SubmitResult> {
+  const body: Record<string, unknown> = { ...input };
+  if (opts.sync) body.enable_sync_mode = true;
+  return apiPost<SubmitResult>(`/api/v3/${model}`, body);
+}
+
+export type PollHandle = { cancel: () => void };
+
+/**
+ * Poll a prediction until it reaches a terminal status. `onTick` fires each
+ * round so the caller can keep a spinner honest.
+ */
+export async function waitForPrediction(
+  id: string,
+  opts: { intervalMs?: number; onTick?: (status: string) => void; signal?: { cancelled: boolean } } = {},
+): Promise<HistoryItem> {
+  const interval = opts.intervalMs ?? 1000;
+  for (;;) {
+    const item = await fetchPrediction(id);
+    opts.onTick?.(item.status);
+    if (item.status === 'completed') return item;
+    if (item.status === 'failed' || item.status === 'cancelled' || item.status === 'timeout') {
+      throw new Error(`Prediction ${item.status}${item.error ? `: ${item.error}` : ''} (task_id: ${id})`);
+    }
+    if (opts.signal?.cancelled) throw new Error(`cancelled (task_id: ${id})`);
+    await new Promise((r) => setTimeout(r, interval));
+  }
+}
+
+// ---- Finance: billings, usage, per-prediction cost ----
+
+export interface BillingItem {
+  uuid: string;
+  billing_type: string;
+  price: number;
+  created_at: string;
+  access_key_name?: string;
+  access_key_uuid?: string;
+  order?: { uuid: string; state?: string; price?: number; origin_price?: number; status?: number };
+  prediction?: { uuid: string; model_uuid?: string; status?: string };
+  consumption?: Record<string, unknown>;
+}
+
+export interface BillingsQuery {
+  page?: number;
+  pageSize?: number;
+  type?: string;
+  startTime?: string;
+  endTime?: string;
+  model?: string;
+  accessKey?: string;
+}
+
+export async function fetchBillings(
+  query: BillingsQuery = {},
+): Promise<{ page: number; has_more: boolean; items: BillingItem[] }> {
+  const body: Record<string, unknown> = {
+    page: query.page ?? 1,
+    page_size: query.pageSize ?? 20,
+  };
+  if (query.type) body.billing_type = query.type;
+  if (query.startTime) body.start_time = query.startTime;
+  if (query.endTime) body.end_time = query.endTime;
+  if (query.model) body.model_uuid = query.model;
+  if (query.accessKey) body.access_key_uuid = query.accessKey;
+  return apiPost('/api/v3/billings/search', body);
+}
+
+export interface UsageStats {
+  per_model_usage: Array<{
+    model_uuid: string;
+    model_type?: string;
+    unit_price?: number;
+    total_cost: number;
+    total_count?: number;
+    last_used_date?: string;
+  }>;
+  daily_usage: Array<{ date: string; amount: number; count: number }>;
+  summary: { total_cost: number; total_requests: number; success_requests: number };
+}
+
+export async function fetchUsageStats(
+  startTime: string,
+  endTime: string,
+  model?: string,
+): Promise<UsageStats> {
+  const body: Record<string, unknown> = { start_time: startTime, end_time: endTime };
+  if (model) body.model_uuid = model;
+  return apiPost('/api/v3/user/usage_stats', body);
 }

@@ -90,9 +90,9 @@ wavespeed run ... -p "..." --json | jq '.outputs[0]'
 - **`defaultModel`** — `wavespeed run -p "…"` (no model arg) uses this. Can itself be an alias name.
 - **`aliases`** — your own shortcuts. `wavespeed run hero -p "…"` expands to model + input. CLI `-i k=v` flags override. `wavespeed run hero -h` shows the resolved schema. List them with `wavespeed aliases`.
 
-Resolution: positional with `/` is a model ID; otherwise looked up as an alias. Merge order on inputs: `alias.input` → `--input-file` → `-i k=v` → `-p`. **The CLI never rewrites your prompt or input values**, with one explicit exception: local file paths become hosted URLs.
+Resolution: positional with `/` is a model ID; otherwise looked up as an alias. Merge order on inputs: `alias.input` → `--input-file` → `-i k=v` → `-p`. **The CLI never rewrites your prompt or input values.** The one way to hand it a local file is the explicit `@` marker below — bare paths are passed through untouched, never uploaded.
 
-**Local files as inputs.** `-i image=./cat.png` uploads the file first and submits its URL — no separate `wavespeed upload` step. A bare value is only treated as a file when it has a media extension (image/video/audio) *and* exists on disk; prompt fields never auto-detect. Prefix with `@` (`-i image=@./cat.png`) to force an upload of any file — then a missing file is an error instead of a pass-through. The same file referenced twice uploads once.
+**Local files as inputs.** `-i image=@./cat.png` (curl-style) uploads the file and submits its hosted URL — no separate `wavespeed upload` step. Only `@`-prefixed values upload; a missing `@` file is an error. Identical bytes are content-hash cached for 24h, so repeated runs (and `price --upload`) reuse one upload and spare your quota.
 
 ## Recommended starting models
 

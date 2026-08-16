@@ -6,6 +6,8 @@ import fs from 'node:fs';
 import { requireClient } from '../lib/client.js';
 import { parseInputs } from '../lib/inputs.js';
 import { resolveLocalFiles } from '../lib/local-files.js';
+import { submitPrediction, waitForPrediction, SubmitResult } from '../lib/api.js';
+import { uploadWithCache } from '../lib/upload-cache.js';
 import { downloadOutputs, printOutputs } from '../lib/output.js';
 import { emitJson, emitJsonError, isJsonMode, log, setJsonMode } from '../lib/log.js';
 import { downloadOptsFromFlag } from '../lib/download-flag.js';
@@ -77,7 +79,7 @@ export function registerRun(program: Command): void {
     .command('run')
     .description('Run any Wavespeed model — generic invoke with --input key=value pairs')
     .argument('[model]', 'Model ID, alias name, or omit to use defaultModel.')
-    .option('-i, --input <pair...>', 'Inputs as key=value (repeatable). Local media paths auto-upload; @path forces upload. Dotted keys nest.', [])
+    .option('-i, --input <pair...>', 'Inputs as key=value (repeatable). @path uploads a local file and passes its URL. Dotted keys nest.', [])
     .option('-p, --prompt <text>', 'Shorthand for --input prompt=<text>')
     .option('--input-file <path>', 'JSON file with full input object')
     .option('--download [path]', 'Save outputs locally (optional path template, e.g. "./out/{index}.{ext}")')
@@ -107,14 +109,13 @@ export function registerRun(program: Command): void {
       Object.assign(input, parseInputs(opts.input ?? []));
       if (opts.prompt) input.prompt = opts.prompt;
 
-      // Local paths become hosted URLs before submission. Uploads go straight
-      // to object storage via a presigned PUT, so this is one extra round trip
-      // per distinct file rather than a reason to make the user run `upload`
-      // first and paste the result back.
+      // `@path` inputs become hosted URLs before submission. Only the
+      // explicit @ marker uploads — the CLI never guesses that a bare value
+      // was meant to be a file.
       try {
         const uploadSpinner = !isJsonMode() ? ora({ color: 'magenta' }) : null;
         const resolved = await resolveLocalFiles(input, {
-          upload: (file) => client.upload(file),
+          upload: async (file) => (await uploadWithCache(file, (f) => client.upload(f))).url,
           onUpload: (file, i, total) => {
             uploadSpinner?.start(
               total > 1
@@ -141,55 +142,80 @@ export function registerRun(program: Command): void {
       );
       if (input.prompt) log(chalk.gray('  prompt: ') + chalk.white(String(input.prompt)));
 
+      // Submit and poll are deliberately separate calls. The moment the task
+      // exists we print its ID and arm a SIGINT handler — a paid generation
+      // must never be orphaned by a Ctrl+C or a dropped SSH session with the
+      // user left holding nothing to query.
       const spinner = ora({ text: 'Submitting…', color: 'magenta' });
       if (!isJsonMode()) spinner.start();
       const startedAt = Date.now();
+      let submitted: SubmitResult;
+      try {
+        submitted = await submitPrediction(model, input, { sync: !!opts.sync });
+      } catch (err: any) {
+        const message = err.message ?? String(err);
+        spinner.fail(message);
+        if (isJsonMode()) emitJsonError(message);
+        process.exit(1);
+      }
+
+      const predictionId = submitted.id;
+      if (predictionId && !isJsonMode()) {
+        spinner.stopAndPersist({
+          symbol: chalk.gray('·'),
+          text: chalk.gray('prediction: ') + chalk.white(predictionId),
+        });
+        spinner.start('Generating…');
+      }
+
+      const abortNote = () => {
+        // Runs on Ctrl+C while the task is still going server-side. The task
+        // is NOT cancelled — it completes and is charged — so hand the user
+        // the way back to it.
+        process.stderr.write(
+          '\n' +
+            chalk.yellow('Interrupted — the task keeps running on the server.') +
+            '\n' +
+            (predictionId
+              ? chalk.gray('  resume:  ') + chalk.cyan(`wavespeed show ${predictionId}`) + '\n'
+              : ''),
+        );
+        process.exit(130);
+      };
+      if (predictionId) process.on('SIGINT', abortNote);
+
       let result: any;
       try {
-        const iv = setInterval(() => {
-          const s = Math.floor((Date.now() - startedAt) / 1000);
-          spinner.text = `Generating… ${s}s`;
-        }, 200);
-        try {
-          result = await client.run(model, input, { enableSyncMode: !!opts.sync });
-        } finally {
-          clearInterval(iv);
+        if (submitted.status === 'completed') {
+          // Sync mode finished within the request.
+          result = submitted;
+        } else if (!predictionId) {
+          throw new Error(`No prediction ID in response: ${JSON.stringify(submitted)}`);
+        } else {
+          const iv = setInterval(() => {
+            const s = Math.floor((Date.now() - startedAt) / 1000);
+            spinner.text = `Generating… ${s}s`;
+          }, 200);
+          try {
+            result = await waitForPrediction(predictionId, { intervalMs: 1000 });
+          } finally {
+            clearInterval(iv);
+          }
         }
         spinner.succeed(`Done in ${Math.floor((Date.now() - startedAt) / 1000)}s.`);
       } catch (err: any) {
         const message = err.message ?? String(err);
-        const syncTimeout = opts.sync ? extractSyncTimeoutDetails(message) : null;
-
-        if (syncTimeout && !isJsonMode()) {
-          spinner.fail('Sync mode timed out; the task is still processing asynchronously.');
-          log(chalk.gray('  reason: ') + message);
-          if (syncTimeout.predictionId) {
-            log(chalk.gray('  prediction: ') + chalk.white(syncTimeout.predictionId));
-            log(chalk.gray('  query:      ') + chalk.cyan(`wavespeed show ${syncTimeout.predictionId}`));
-          }
-          if (syncTimeout.resultUrl) {
-            log(chalk.gray('  result URL: ') + chalk.cyan(syncTimeout.resultUrl));
-          }
-        } else {
-          spinner.fail(message);
+        spinner.fail(message);
+        if (predictionId && !isJsonMode()) {
+          log(chalk.gray('  prediction: ') + chalk.white(predictionId));
+          log(chalk.gray('  query:      ') + chalk.cyan(`wavespeed show ${predictionId}`));
         }
-
         if (isJsonMode()) {
-          emitJsonError(
-            message,
-            syncTimeout
-              ? {
-                  sync_timeout: true,
-                  prediction_id: syncTimeout.predictionId,
-                  result_url: syncTimeout.resultUrl,
-                  query_command: syncTimeout.predictionId
-                    ? `wavespeed show ${syncTimeout.predictionId}`
-                    : undefined,
-                }
-              : {},
-          );
+          emitJsonError(message, predictionId ? { prediction_id: predictionId, query_command: `wavespeed show ${predictionId}` } : {});
         }
         process.exit(1);
+      } finally {
+        if (predictionId) process.removeListener('SIGINT', abortNote);
       }
 
       const urls = extractUrls(result);
@@ -213,6 +239,7 @@ export function registerRun(program: Command): void {
 
       if (isJsonMode()) {
         emitJson({
+          id: predictionId,
           model,
           prompt: typeof input.prompt === 'string' ? input.prompt : undefined,
           outputs: urls,

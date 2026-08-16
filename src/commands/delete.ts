@@ -12,7 +12,15 @@ export function registerDelete(program: Command): void {
     .option('-y, --yes', 'Skip the confirmation prompt')
     .option('--json', 'Emit JSON: {deleted: [...ids]}')
     .action(async (ids: string[], opts: { yes?: boolean; json?: boolean }) => {
-      if (!opts.yes && !opts.json) {
+      // --json controls output format only; it must never stand in for
+      // consent. Interactive terminals get the prompt, scripts must say -y.
+      if (!opts.yes) {
+        if (!process.stdin.isTTY) {
+          const msg = 'Refusing to delete without confirmation. Pass --yes in non-interactive use.';
+          if (opts.json) process.stdout.write(JSON.stringify({ error: msg }, null, 2) + '\n');
+          else console.error(chalk.red(msg));
+          process.exit(1);
+        }
         const go = await confirm({
           message: `Delete ${ids.length} prediction${ids.length === 1 ? '' : 's'} from your history? This cannot be undone.`,
           default: false,

@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
-import { fetchHistory, HistoryItem } from '../lib/api.js';
+import { fetchHistory, HistoryItem, PREDICTION_STATUSES } from '../lib/api.js';
 
 function statusBadge(status: string): string {
   const map: Record<string, (s: string) => string> = {
@@ -37,11 +37,17 @@ export function registerHistory(program: Command): void {
     .option('--page <n>', 'Page number', '1')
     .option('--limit <n>', 'Page size (1-100)', '20')
     .option('--model <id>', 'Filter by model ID')
-    .option('--status <s>', 'Filter by status (completed, failed, processing, pending)')
+    .option('--status <s>', 'Filter by status (created, processing, completed, failed, cancelled, timeout)')
     .option('--since <iso>', 'Show predictions created after this ISO timestamp')
     .option('--until <iso>', 'Show predictions created before this ISO timestamp')
     .option('--json', 'Emit JSON: {page, items: [...]}')
     .action(async (opts: any) => {
+      if (opts.status && !PREDICTION_STATUSES.includes(opts.status)) {
+        const msg = `Unknown status "${opts.status}". One of: ${PREDICTION_STATUSES.join(', ')}.`;
+        if (opts.json) process.stdout.write(JSON.stringify({ error: msg }, null, 2) + '\n');
+        else console.error(chalk.red('Error: ') + msg);
+        process.exit(1);
+      }
       const spinner = !opts.json ? ora('Fetching history…').start() : null;
       try {
         const data = await fetchHistory({
@@ -63,7 +69,10 @@ export function registerHistory(program: Command): void {
         console.log();
         console.log(
           chalk.bold(`${items.length} prediction${items.length === 1 ? '' : 's'}`) +
-            chalk.gray(`  · page ${data.page}`),
+            chalk.gray(`  · page ${data.page}`) +
+            // The silent 24h default made "where did yesterday's runs go?" a
+            // recurring surprise; name the window whenever it applies.
+            (opts.since || opts.until ? '' : chalk.gray('  · last 24h (widen with --since)')),
         );
         console.log();
 

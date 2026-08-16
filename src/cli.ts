@@ -21,6 +21,8 @@ import { registerHistory } from './commands/history.js';
 import { registerShow } from './commands/show.js';
 import { registerDelete } from './commands/delete.js';
 import { registerOpen } from './commands/open.js';
+import { registerBillings } from './commands/billings.js';
+import { registerUsage } from './commands/usage.js';
 import { detectRunHelp, printDynamicRunHelp } from './lib/dynamic-help.js';
 
 // Read version from package.json at runtime so a bump in package.json is
@@ -73,6 +75,8 @@ registerHistory(program);
 registerShow(program);
 registerDelete(program);
 registerOpen(program);
+registerBillings(program);
+registerUsage(program);
 registerInit(program);
 registerSkill(program);
 

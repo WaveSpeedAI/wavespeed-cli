@@ -24,7 +24,18 @@ export const DEFAULTS = {
 export const userConfig = new Conf<UserConfig>({
   projectName: 'wavespeed',
   defaults: {},
+  // The config file holds the API key in cleartext; owner-only, not the
+  // default 0664 that leaves it group-readable.
+  configFileMode: 0o600,
 });
+
+// conf only applies configFileMode on write. Tighten a config that an older
+// CLI version already left group-readable.
+try {
+  if (fs.existsSync(userConfig.path)) fs.chmodSync(userConfig.path, 0o600);
+} catch {
+  /* best effort */
+}
 
 export interface ProjectConfig {
   $schema?: string;
@@ -57,7 +68,9 @@ export function getApiKey(): string | undefined {
 }
 
 export function getBaseUrl(): string {
-  return userConfig.get('baseUrl') || DEFAULTS.baseUrl;
+  // Env first, matching how the key resolves: CI pointing one command at the
+  // test environment must not require editing the user-level config.
+  return process.env.WAVESPEED_BASE_URL || userConfig.get('baseUrl') || DEFAULTS.baseUrl;
 }
 
 export function resolveOutputDir(): string {
