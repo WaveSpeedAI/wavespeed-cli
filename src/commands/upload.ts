@@ -8,7 +8,7 @@ import { uploadWithCache } from '../lib/upload-cache.js';
 export function registerUpload(program: Command): void {
   program
     .command('upload')
-    .description('Upload one or more local files to Wavespeed and print their CDN URLs')
+    .description('Upload one or more local files to Wavespeed and print their CDN URLs (identical bytes reuse the same upload for 24h)')
     .argument('<file...>', 'Path(s) to file(s)')
     .option('--json', 'Emit a JSON object on stdout')
     .action(async (files: string[], opts: { json?: boolean }) => {

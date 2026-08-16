@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import { fetchBillings, BillingItem } from '../lib/api.js';
+import { toIso } from '../lib/time.js';
 
 function money(v: number | undefined): string {
   if (v === undefined) return '';
@@ -37,8 +38,8 @@ export function registerBillings(program: Command): void {
           type: opts.type,
           model: opts.model,
           accessKey: opts.key,
-          startTime: opts.since,
-          endTime: opts.until,
+          startTime: opts.since ? toIso(opts.since) : undefined,
+          endTime: opts.until ? toIso(opts.until, true) : undefined,
         });
         spinner?.stop();
 

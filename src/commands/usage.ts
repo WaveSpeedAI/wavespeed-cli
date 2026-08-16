@@ -2,16 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import { fetchUsageStats } from '../lib/api.js';
-
-/** Accepts ISO or YYYY-MM-DD; returns full RFC3339 the API requires. */
-function toIso(value: string, endOfDay = false): string {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return value + (endOfDay ? 'T23:59:59Z' : 'T00:00:00Z');
-  }
-  const d = new Date(value);
-  if (isNaN(d.getTime())) throw new Error(`Invalid time "${value}". Use ISO 8601 or YYYY-MM-DD.`);
-  return d.toISOString();
-}
+import { toIso } from '../lib/time.js';
 
 export function registerUsage(program: Command): void {
   program

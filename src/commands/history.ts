@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import { fetchHistory, HistoryItem, PREDICTION_STATUSES } from '../lib/api.js';
+import { toIso } from '../lib/time.js';
 
 function statusBadge(status: string): string {
   const map: Record<string, (s: string) => string> = {
@@ -38,8 +39,8 @@ export function registerHistory(program: Command): void {
     .option('--limit <n>', 'Page size (1-100)', '20')
     .option('--model <id>', 'Filter by model ID')
     .option('--status <s>', 'Filter by status (created, processing, completed, failed, cancelled, timeout)')
-    .option('--since <iso>', 'Show predictions created after this ISO timestamp')
-    .option('--until <iso>', 'Show predictions created before this ISO timestamp')
+    .option('--since <time>', 'Predictions created after this time (ISO or YYYY-MM-DD)')
+    .option('--until <time>', 'Predictions created before this time (ISO or YYYY-MM-DD)')
     .option('--json', 'Emit JSON: {page, items: [...]}')
     .action(async (opts: any) => {
       if (opts.status && !PREDICTION_STATUSES.includes(opts.status)) {
@@ -55,8 +56,8 @@ export function registerHistory(program: Command): void {
           pageSize: parseInt(opts.limit, 10),
           model: opts.model,
           status: opts.status,
-          createdAfter: opts.since,
-          createdBefore: opts.until,
+          createdAfter: opts.since ? toIso(opts.since) : undefined,
+          createdBefore: opts.until ? toIso(opts.until, true) : undefined,
         });
         spinner?.stop();
 

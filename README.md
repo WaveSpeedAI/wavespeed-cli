@@ -133,11 +133,13 @@ wavespeed models [query]                 Browse the live catalog (cached 1h)
 wavespeed aliases                        List aliases from wavespeed.json + user config
 
 # files
-wavespeed upload <file...>               Upload local file(s) → CDN URLs
+wavespeed upload <file...>               Upload local file(s) → CDN URLs (24h dedup cache)
 wavespeed download <url...>              Save URLs to disk
 
 # account & history
 wavespeed balance                        Show your current credit balance
+wavespeed usage [--since --until]        Spend + request counts, per-model (last 7d)
+wavespeed billings [--type --since …]    Itemized charges and refunds
 wavespeed price <model> -i k=v           Estimate the cost of a run (no charge)
 wavespeed top-up                         Open https://wavespeed.ai/top-up
 wavespeed history [--limit --status …]   List recent predictions (last 24h)

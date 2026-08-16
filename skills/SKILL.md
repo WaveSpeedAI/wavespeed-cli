@@ -23,7 +23,7 @@ wavespeed run google/nano-banana-2/text-to-image \
   -i aspect_ratio="16:9" -i resolution="2k" --json
 ```
 
-`run --json` returns `{ model, prompt, outputs: [url, ...], saved: [path, ...], elapsed_ms, raw }`. Use the URL when the user wants a link. Add `--download` if they need bytes on disk.
+`run --json` returns `{ id, model, prompt, outputs: [url, ...], saved: [path, ...], elapsed_ms, raw }`. Keep `id` — it is the handle for `wavespeed show <id>` if anything is interrupted. Use the URL when the user wants a link. Add `--download` if they need bytes on disk.
 
 ## Recommended defaults
 
@@ -39,17 +39,18 @@ These are good starting points. Browse alternatives with `wavespeed models <quer
 ## Common recipes
 
 ```bash
-# Edit an existing image — upload first, then pass the URL
-URL=$(wavespeed upload ./input.jpg --json | jq -r .url)
+# Edit an existing image — @path uploads the file and passes its URL (one step)
 wavespeed run google/nano-banana-2/edit \
   -p "replace the background with a sunlit kitchen" \
-  -i images="[\"$URL\"]" --json
+  -i images='["@./input.jpg"]' --json
 
-# Image-to-video — same pattern
-URL=$(wavespeed upload ./hero.jpg --json | jq -r .url)
+# Image-to-video — same @ marker for single-URL fields
 wavespeed run bytedance/seedance-2.0/image-to-video \
   -p "subtle parallax, gentle wind" \
-  -i image="$URL" -i duration=5 --json
+  -i image=@./hero.jpg -i duration=5 --json
+
+# Or upload separately when you need the URL itself
+URL=$(wavespeed upload ./hero.jpg --json | jq -r .url)
 
 # Save outputs locally with a template
 wavespeed run ... -p "..." --download "./out/{index}.{ext}"
@@ -62,7 +63,7 @@ If `wavespeed.json` exists (created by `wavespeed init`):
 - **`defaultModel`** — lets `wavespeed run -p "…"` (no model arg) work.
 - **Aliases** — named shortcuts that bundle model + default inputs. Run `wavespeed aliases` to see what's defined. `wavespeed run <alias> -h` shows the resolved schema. CLI `-i k=v` overrides alias defaults.
 
-The CLI never modifies the user's prompt or inputs. What you typed is what hits the API.
+The CLI never modifies the user's prompt or inputs. The single exception is explicit: an `@path` value uploads that file and substitutes its hosted URL. Bare paths are never uploaded.
 
 ## Auth
 
@@ -70,6 +71,8 @@ The CLI never modifies the user's prompt or inputs. What you typed is what hits 
 
 ## Pitfalls
 
-- Local file paths don't auto-upload — call `wavespeed upload` first to get a CDN URL.
+- Local files: use `@./file.jpg` in `-i` values. Bare paths are NOT uploaded and the model will reject them.
 - Don't invent model IDs. Always confirm via `wavespeed models` or `wavespeed schema <id>` before running.
 - Use `--json` on every `run` so you can read `outputs[0]` programmatically.
+- `wavespeed delete` requires `--yes` when run non-interactively (that includes you).
+- Spend questions: `wavespeed usage` (totals, per-model) and `wavespeed billings` (per-charge records).

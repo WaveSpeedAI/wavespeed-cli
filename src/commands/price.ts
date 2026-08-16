@@ -15,7 +15,7 @@ export function registerPrice(program: Command): void {
     .argument('<model>', 'Model ID or alias')
     .option('-i, --input <pair...>', 'Inputs as key=value (same syntax as `wavespeed run`)', [])
     .option('-p, --prompt <text>', 'Shorthand for --input prompt=<text>')
-    .option('--upload', 'Upload local file inputs first so media-based pricing is exact (quota applies; content-hash cached 24h)')
+    .option('--upload', 'Upload @file inputs first so media-based pricing is exact (quota applies; identical bytes cached 24h)')
     .option('--json', 'Emit JSON')
     .action(async (modelArg: string, opts: any) => {
       const resolved = resolveModelToken(modelArg);

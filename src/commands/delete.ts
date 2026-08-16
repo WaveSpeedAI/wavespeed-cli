@@ -9,7 +9,7 @@ export function registerDelete(program: Command): void {
     .command('delete')
     .description('Delete one or more predictions from your history')
     .argument('<id...>', 'Prediction ID(s) to delete')
-    .option('-y, --yes', 'Skip the confirmation prompt')
+    .option('-y, --yes', 'Skip the confirmation prompt (required in scripts / non-interactive use)')
     .option('--json', 'Emit JSON: {deleted: [...ids]}')
     .action(async (ids: string[], opts: { yes?: boolean; json?: boolean }) => {
       // --json controls output format only; it must never stand in for

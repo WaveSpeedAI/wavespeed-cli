@@ -24,7 +24,7 @@ Tests use Vitest and live in `src/**/*.test.ts` alongside the code they cover (e
 
 1. **JSON-first stdout protocol** (`src/lib/log.ts`). When `--json` is set, stdout is reserved for the final JSON payload only; progress, spinners, and human text go to stderr. Use `setJsonMode/log/emitJson/emitJsonError` in any new command.
 
-2. **The CLI never mutates user input.** What the user passes is what hits the API. Don't add silent prompt prefixes, palette injections, or style suffixes. Aliases (which are named and explicit) are the only mechanism for bundling extra inputs.
+2. **The CLI never mutates user input.** What the user passes is what hits the API. Don't add silent prompt prefixes, palette injections, or style suffixes. The two explicit mechanisms that transform input are aliases (named bundles of extra inputs) and the `@path` marker (`src/lib/local-files.ts`), which uploads the referenced file and substitutes its hosted URL. Never widen `@` into heuristic auto-detection of bare paths — that was tried and deliberately reverted.
 
 **Live API as catalog source.** `src/lib/api.ts:fetchModels()` calls `GET /api/v3/models` and caches the response to `~/.cache/wavespeed/models.json` (1h TTL, keyed on baseUrl). `models`, `schema`, and dynamic `run -h` all read from this single payload. There is no bundled catalog.
 
@@ -40,8 +40,8 @@ Tests use Vitest and live in `src/**/*.test.ts` alongside the code they cover (e
 **Config locations**:
 - `wavespeed.json` (walks up CWD tree) — project: `defaultModel`, `aliases`, `outputDir`.
 - `~/.config/wavespeed-nodejs/config.json` (via `conf`) — per-machine: `apiKey`, `baseUrl`, `defaultModel`, `aliases`.
-- `WAVESPEED_API_KEY` env var — the only env var the CLI reads; overrides stored key.
+- Env vars: `WAVESPEED_API_KEY` (overrides stored key) and `WAVESPEED_BASE_URL` (overrides stored base URL).
 
-**SDK boundary**: the official `wavespeed` npm SDK only covers `run()` and `upload()`. Everything else (`/api/v3/models`, `/api/v3/balance`, `/api/v3/model/pricing`, `/api/v3/predictions`, `/api/v3/predictions/<id>/result`, `/api/v3/predictions/delete`) is fetched directly via `apiGet`/`apiPost` helpers in `src/lib/api.ts`.
+**SDK boundary**: the official `wavespeed` npm SDK is used for `upload()` only; `run` submits and polls itself (`submitPrediction`/`waitForPrediction` in `src/lib/api.ts`) so the prediction ID is visible from the moment it exists. Direct calls cover `/api/v3/models`, `/api/v3/balance`, `/api/v3/model/price`, `/api/v3/predictions`, `/api/v3/predictions/<id>/result`, `/api/v3/predictions/delete`, `/api/v3/billings/search`, and `/api/v3/user/usage_stats`. Every endpoint the CLI touches must be v3 AND documented in the public api-doc — no internal or legacy contracts.
 
 **Useful page URLs** live in `src/lib/links.ts` — a single map consumed by `wavespeed open` and the `status` footer. Adding/renaming a link is a one-file change.
