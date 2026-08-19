@@ -115,6 +115,8 @@ wavespeed skill install        # writes .claude/skills/wavespeed/SKILL.md
 
 The skill teaches the agent the three-step pattern: `models` to find, `run <id> -h` to discover params, `run <id> -p "…" --json` to execute. Every command supports `--json` for clean piping.
 
+**DeepSeek Harness (dsh)**: the same skill is packaged for dsh's `.dsh/skills` layout at [WaveSpeedAI/wavespeed-dsh-skill](https://github.com/WaveSpeedAI/wavespeed-dsh-skill).
+
 ## Commands
 
 ```
