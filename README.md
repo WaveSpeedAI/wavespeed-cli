@@ -77,14 +77,14 @@ wavespeed run ... -p "..." --json | jq '.outputs[0]'
 
 ```jsonc
 {
-  "defaultModel": "google/nano-banana-2/text-to-image",
+  "defaultModel": "bytedance/seedream-v5.0-pro",
   "outputDir": "wavespeed-output",
   "aliases": {
-    "hero":   { "model": "google/nano-banana-2/text-to-image",
+    "hero":   { "model": "bytedance/seedream-v5.0-pro",
                 "input": { "aspect_ratio": "16:9", "resolution": "2k" } },
-    "social": { "model": "google/nano-banana-2/text-to-image",
+    "social": { "model": "bytedance/seedream-v5.0-pro",
                 "input": { "aspect_ratio": "1:1",  "resolution": "1k" } },
-    "vid":    { "model": "bytedance/seedance-2.0/text-to-video",
+    "vid":    { "model": "bytedance/seedance-2.5/text-to-video",
                 "input": { "resolution": "720p", "duration": 5 } }
   }
 }
@@ -101,10 +101,12 @@ Resolution: positional with `/` is a model ID; otherwise looked up as an alias. 
 
 | Use case | Model |
 |---|---|
-| Text → image | `google/nano-banana-2/text-to-image` |
-| Image edit | `google/nano-banana-2/edit` |
-| Text → video | `bytedance/seedance-2.0/text-to-video` |
-| Image → video | `bytedance/seedance-2.0/image-to-video` |
+| Text → image | `bytedance/seedream-v5.0-pro` |
+| Image edit | `bytedance/seedream-v5.0-pro/edit` |
+| Text → video | `bytedance/seedance-2.5/text-to-video` |
+| Image → video | `bytedance/seedance-2.5/image-to-video` |
+| Video edit | `bytedance/seedance-2.5/video-edit` |
+| Video extend | `bytedance/seedance-2.5/video-extend` |
 
 Browse alternatives with `wavespeed models <query>`.
 

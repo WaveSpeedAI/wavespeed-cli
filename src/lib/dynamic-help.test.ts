@@ -11,8 +11,8 @@ function argv(...args: string[]): string[] {
 
 describe('detectRunHelp', () => {
   it('matches `run <model> --help`', () => {
-    expect(detectRunHelp(argv('run', 'google/nano-banana-2/text-to-image', '--help'))).toBe(
-      'google/nano-banana-2/text-to-image',
+    expect(detectRunHelp(argv('run', 'bytedance/seedream-v5.0-pro', '--help'))).toBe(
+      'bytedance/seedream-v5.0-pro',
     );
   });
 
@@ -21,8 +21,8 @@ describe('detectRunHelp', () => {
   });
 
   it('matches when -h appears before the model token', () => {
-    expect(detectRunHelp(argv('run', '-h', 'google/nano-banana-2/text-to-image'))).toBe(
-      'google/nano-banana-2/text-to-image',
+    expect(detectRunHelp(argv('run', '-h', 'bytedance/seedream-v5.0-pro'))).toBe(
+      'bytedance/seedream-v5.0-pro',
     );
   });
 

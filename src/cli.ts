@@ -51,7 +51,7 @@ ${chalk.bold('Quick start:')}
   ${chalk.cyan('$ wavespeed models                                                # browse the catalog')}
   ${chalk.cyan('$ wavespeed run wavespeed-ai/z-image/turbo -h                    # see the model\'s flags')}
   ${chalk.cyan('$ wavespeed run wavespeed-ai/z-image/turbo -p "a cyberpunk skyline"   # ~5s')}
-  ${chalk.cyan('$ wavespeed run bytedance/seedance-2.0/text-to-video -p "drone shot over snowy peaks"')}
+  ${chalk.cyan('$ wavespeed run bytedance/seedance-2.5/text-to-video -p "drone shot over snowy peaks"')}
 
 ${chalk.bold('Use from any coding agent (Claude Code, Cursor, Codex):')}
   ${chalk.cyan('$ wavespeed skill install')}   ${chalk.gray('# drops a SKILL.md so the agent knows how to call wavespeed')}

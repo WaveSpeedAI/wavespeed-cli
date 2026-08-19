@@ -30,7 +30,7 @@ export function registerAliases(program: Command): void {
               {
                 aliases: {
                   hero: {
-                    model: 'google/nano-banana-2/text-to-image',
+                    model: 'bytedance/seedream-v5.0-pro',
                     input: { aspect_ratio: '16:9', resolution: '2k' },
                   },
                 },

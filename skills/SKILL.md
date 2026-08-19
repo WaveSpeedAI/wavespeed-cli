@@ -11,14 +11,14 @@ You have access to the `wavespeed` CLI. Every generation flows through one verb.
 
 ```bash
 # 1. FIND a model — search the live catalog
-wavespeed models "nano banana"
+wavespeed models "seedream"
 wavespeed models --type image-to-video --popular
 
 # 2. INSPECT its inputs — dynamic schema, per model
-wavespeed run google/nano-banana-2/text-to-image -h
+wavespeed run bytedance/seedream-v5.0-pro -h
 
 # 3. RUN it — always pass --json so you can read the result
-wavespeed run google/nano-banana-2/text-to-image \
+wavespeed run bytedance/seedream-v5.0-pro \
   -p "a cyberpunk skyline at golden hour" \
   -i aspect_ratio="16:9" -i resolution="2k" --json
 ```
@@ -29,10 +29,12 @@ wavespeed run google/nano-banana-2/text-to-image \
 
 | Use case | Model |
 |---|---|
-| Text → image | `google/nano-banana-2/text-to-image` |
-| Image edit (instruction-driven) | `google/nano-banana-2/edit` — requires `images: [url, ...]` |
-| Text → video | `bytedance/seedance-2.0/text-to-video` |
-| Image → video | `bytedance/seedance-2.0/image-to-video` — requires `image: url` |
+| Text → image | `bytedance/seedream-v5.0-pro` |
+| Image edit (instruction-driven) | `bytedance/seedream-v5.0-pro/edit` — requires `images: [url, ...]` |
+| Text → video | `bytedance/seedance-2.5/text-to-video` |
+| Image → video | `bytedance/seedance-2.5/image-to-video` — requires `image: url` |
+| Video edit (instruction-driven) | `bytedance/seedance-2.5/video-edit` — requires `video: url` |
+| Video extend | `bytedance/seedance-2.5/video-extend` — requires `video: url` |
 
 These are good starting points. Browse alternatives with `wavespeed models <query>`.
 
@@ -40,12 +42,12 @@ These are good starting points. Browse alternatives with `wavespeed models <quer
 
 ```bash
 # Edit an existing image — @path uploads the file and passes its URL (one step)
-wavespeed run google/nano-banana-2/edit \
+wavespeed run bytedance/seedream-v5.0-pro/edit \
   -p "replace the background with a sunlit kitchen" \
   -i images='["@./input.jpg"]' --json
 
 # Image-to-video — same @ marker for single-URL fields
-wavespeed run bytedance/seedance-2.0/image-to-video \
+wavespeed run bytedance/seedance-2.5/image-to-video \
   -p "subtle parallax, gentle wind" \
   -i image=@./hero.jpg -i duration=5 --json
 

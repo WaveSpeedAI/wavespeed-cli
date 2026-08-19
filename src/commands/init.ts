@@ -5,7 +5,7 @@ import path from 'node:path';
 import { input, confirm } from '@inquirer/prompts';
 import { PROJECT_FILE, ProjectConfig } from '../lib/config.js';
 
-const STARTER_MODEL = 'google/nano-banana-2/text-to-image';
+const STARTER_MODEL = 'bytedance/seedream-v5.0-pro';
 
 export function registerInit(program: Command): void {
   program
