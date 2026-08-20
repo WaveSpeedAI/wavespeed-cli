@@ -1,6 +1,7 @@
 import { Client } from 'wavespeed';
 import chalk from 'chalk';
 import { getApiKey, getBaseUrl } from './config.js';
+import { CLI_CLIENT_NAME } from './client-headers.js';
 
 export function requireClient(): Client {
   const apiKey = getApiKey();
@@ -10,11 +11,11 @@ export function requireClient(): Client {
     console.error(chalk.gray('Or set ') + chalk.cyan('WAVESPEED_API_KEY') + chalk.gray(' in your environment.\n'));
     process.exit(1);
   }
-  return new Client(apiKey, { baseUrl: getBaseUrl() });
+  return new Client(apiKey, { baseUrl: getBaseUrl(), clientName: CLI_CLIENT_NAME });
 }
 
 export function maybeClient(): Client | null {
   const apiKey = getApiKey();
   if (!apiKey) return null;
-  return new Client(apiKey, { baseUrl: getBaseUrl() });
+  return new Client(apiKey, { baseUrl: getBaseUrl(), clientName: CLI_CLIENT_NAME });
 }

@@ -6,6 +6,7 @@ import ora from 'ora';
 import clipboard from 'clipboardy';
 import { userConfig, getBaseUrl, getApiKey, loadProjectConfig, PROJECT_FILE } from '../lib/config.js';
 import { LINKS } from '../lib/links.js';
+import { clientAttributionHeaders } from '../lib/client-headers.js';
 
 const KEY_URL = 'https://wavespeed.ai/accesskey';
 
@@ -45,7 +46,7 @@ async function validateKey(
   let res: Response | null = null;
   try {
     res = await fetch(`${baseUrl}/api/v3/balance`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers: { Authorization: `Bearer ${apiKey}`, ...clientAttributionHeaders() },
     });
   } catch (err: any) {
     return { ok: false, reason: `Could not reach ${baseUrl}: ${err.message}` };

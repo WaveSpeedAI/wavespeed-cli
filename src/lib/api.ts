@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { getApiKey, getBaseUrl } from './config.js';
+import { clientAttributionHeaders } from './client-headers.js';
 
 // Mirrors the /api/v3/models response shape — see ../wavespeed-desktop/src/types/model.ts
 // (note: live `api_schema` has `api_schemas[0].request_schema`, not the OpenAPI-nested form.)
@@ -93,7 +94,7 @@ export async function fetchModels(opts: FetchModelsOptions = {}): Promise<{
   if (!apiKey) throw new Error('No API key configured. Run `wavespeed login`.');
 
   const res = await fetch(`${baseUrl}/api/v3/models`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
+    headers: { Authorization: `Bearer ${apiKey}`, ...clientAttributionHeaders() },
   });
   if (!res.ok) {
     throw await httpError(res, 'GET', '/api/v3/models');
@@ -120,7 +121,7 @@ export function clearModelsCache(): void {
 function authHeaders(): Record<string, string> {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error('No API key configured. Run `wavespeed login`.');
-  return { Authorization: `Bearer ${apiKey}` };
+  return { Authorization: `Bearer ${apiKey}`, ...clientAttributionHeaders() };
 }
 
 interface Envelope<T> {
