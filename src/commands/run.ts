@@ -4,7 +4,7 @@ import ora from 'ora';
 import path from 'node:path';
 import fs from 'node:fs';
 import { requireClient } from '../lib/client.js';
-import { parseInputs } from '../lib/inputs.js';
+import { parseInputs, withInputSyntaxHint } from '../lib/inputs.js';
 import { resolveLocalFiles } from '../lib/local-files.js';
 import { submitPrediction, waitForPrediction, SubmitResult } from '../lib/api.js';
 import { uploadWithCache } from '../lib/upload-cache.js';
@@ -153,7 +153,7 @@ export function registerRun(program: Command): void {
       try {
         submitted = await submitPrediction(model, input, { sync: !!opts.sync });
       } catch (err: any) {
-        const message = err.message ?? String(err);
+        const message = withInputSyntaxHint(err.message ?? String(err), opts.input);
         spinner.fail(message);
         if (isJsonMode()) emitJsonError(message);
         process.exit(1);

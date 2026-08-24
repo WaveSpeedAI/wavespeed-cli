@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseInputs } from './inputs.js';
+import { parseInputs, withInputSyntaxHint } from './inputs.js';
 
 describe('parseInputs', () => {
   it('coerces primitives by syntax', () => {
@@ -47,5 +47,25 @@ describe('parseInputs', () => {
 
   it('returns an empty object for empty input', () => {
     expect(parseInputs([])).toEqual({});
+  });
+});
+
+describe('withInputSyntaxHint', () => {
+  const apiError =
+    'Invalid request body: field "element_refer_list" must be an array, got string "https://x/1.jpg"; please send an array';
+
+  it('shows the JSON form using the value the user actually passed', () => {
+    const out = withInputSyntaxHint(apiError, ['element_refer_list=https://x/1.jpg']);
+    expect(out).toContain(`-i 'element_refer_list=["https://x/1.jpg"]'`);
+  });
+
+  it('still hints when the offending pair is not in the -i list', () => {
+    const out = withInputSyntaxHint(apiError, []);
+    expect(out).toContain(`-i 'element_refer_list=["value"]'`);
+  });
+
+  it('leaves unrelated errors untouched', () => {
+    const msg = 'Insufficient balance';
+    expect(withInputSyntaxHint(msg, [])).toBe(msg);
   });
 });
