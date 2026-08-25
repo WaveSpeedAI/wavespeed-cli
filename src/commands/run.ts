@@ -6,7 +6,8 @@ import fs from 'node:fs';
 import { requireClient } from '../lib/client.js';
 import { parseInputs, withInputSyntaxHint } from '../lib/inputs.js';
 import { resolveLocalFiles } from '../lib/local-files.js';
-import { submitPrediction, waitForPrediction, SubmitResult } from '../lib/api.js';
+import { fetchModels, submitPrediction, waitForPrediction, SubmitResult } from '../lib/api.js';
+import { findUnknownInputs } from '../lib/validate-inputs.js';
 import { uploadWithCache } from '../lib/upload-cache.js';
 import { downloadOutputs, printOutputs } from '../lib/output.js';
 import { emitJson, emitJsonError, isJsonMode, log, setJsonMode } from '../lib/log.js';
@@ -84,6 +85,7 @@ export function registerRun(program: Command): void {
     .option('--input-file <path>', 'JSON file with full input object')
     .option('--download [path]', 'Save outputs locally (optional path template, e.g. "./out/{index}.{ext}")')
     .option('--sync', 'Attempt sync mode; timed-out tasks can still be queried later')
+    .option('--no-validate', 'Skip pre-submit input validation against the model schema')
     .option('--json', 'Emit a single JSON object on stdout (progress goes to stderr)')
     .option('--output-dir <dir>', 'Directory for --download when no path is given')
     .action(async (modelArg: string | undefined, opts: any) => {
@@ -108,6 +110,49 @@ export function registerRun(program: Command): void {
       }
       Object.assign(input, parseInputs(opts.input ?? []));
       if (opts.prompt) input.prompt = opts.prompt;
+
+      // Reject inputs the model's schema does not declare BEFORE anything
+      // costs money. The API's entry whitelist silently drops unknown keys,
+      // so a typo doesn't fail — it bills a generation that ignored the
+      // parameter. Validation fails open (no schema → no check) and, to
+      // avoid stale-cache false positives, re-fetches the catalog once
+      // before rejecting.
+      if (opts.validate !== false) {
+        try {
+          let { models } = await fetchModels();
+          let found = models.find((m) => m.model_id === model);
+          let report = findUnknownInputs(input, found);
+          if (report) {
+            ({ models } = await fetchModels({ refresh: true }));
+            found = models.find((m) => m.model_id === model);
+            report = findUnknownInputs(input, found);
+          }
+          if (report) {
+            const lines = report.unknown.map((k) => {
+              const hint = report!.suggestions.get(k);
+              return `  ${k}` + (hint ? `  (did you mean \`${hint}\`?)` : '');
+            });
+            const msg =
+              `Model ${model} does not accept: ${report.unknown.join(', ')}. ` +
+              `The API silently drops unknown inputs, so this would bill a run that ignores them.`;
+            if (isJsonMode()) {
+              emitJsonError(msg, { unknown_inputs: report.unknown, accepted_inputs: report.known });
+            } else {
+              console.error(chalk.red('Error: ') + `unknown input${report.unknown.length > 1 ? 's' : ''} for ` + chalk.cyan(model) + ':');
+              for (const l of lines) console.error(chalk.yellow(l));
+              console.error(chalk.gray('  The API silently drops unknown inputs — the run would be billed with them ignored.'));
+              console.error(chalk.gray('  Accepted inputs: ') + report.known.join(', '));
+              console.error(chalk.gray('  Full schema:     ') + chalk.cyan(`wavespeed schema ${model}`));
+              console.error(chalk.gray('  Bypass check:    ') + chalk.cyan('--no-validate'));
+            }
+            process.exit(1);
+          }
+        } catch {
+          // Catalog unreachable — validation is best-effort, never a blocker.
+          // (The unknown-input rejection above exits the process directly and
+          // is not routed through here.)
+        }
+      }
 
       // `@path` inputs become hosted URLs before submission. Only the
       // explicit @ marker uploads — the CLI never guesses that a bare value
