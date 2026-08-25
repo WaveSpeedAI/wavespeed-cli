@@ -5,7 +5,7 @@ on:
 
 permissions:
   id-token: write  # Required for OIDC
-  contents: read
+  contents: write  # Tag + GitHub Release after a successful publish
 
 jobs:
   publish:
@@ -27,3 +27,22 @@ jobs:
       - run: npm run build --if-present
       - run: npm test
       - run: npm publish
+
+      # The version that just went to npm is the single source of truth:
+      # tag the exact commit that was published so GitHub never drifts
+      # behind the registry again. Idempotent — re-runs of the workflow
+      # for an already-tagged version skip cleanly instead of failing.
+      - name: Tag and create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="v$(node -p "require('./package.json').version")"
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$VERSION already released, skipping"
+            exit 0
+          fi
+          gh release create "$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$VERSION" \
+            --generate-notes
