@@ -38,7 +38,7 @@ export function registerHistory(program: Command): void {
     .option('--page <n>', 'Page number', '1')
     .option('--limit <n>', 'Page size (1-100)', '20')
     .option('--model <id>', 'Filter by model ID')
-    .option('--status <s>', 'Filter by status (created, processing, completed, failed, cancelled, timeout)')
+    .option('--status <s>', 'Filter by status (created, processing, completed, failed, cancelled, timeout, deleted)')
     .option('--since <time>', 'Predictions created after this time (ISO or YYYY-MM-DD)')
     .option('--until <time>', 'Predictions created before this time (ISO or YYYY-MM-DD)')
     .option('--json', 'Emit JSON: {page, items: [...]}')

@@ -244,6 +244,7 @@ export const PREDICTION_STATUSES = [
   'failed',
   'cancelled',
   'timeout',
+  'deleted',
 ] as const;
 
 export interface SubmitResult {
@@ -285,7 +286,7 @@ export async function waitForPrediction(
     const item = await fetchPrediction(id);
     opts.onTick?.(item.status);
     if (item.status === 'completed') return item;
-    if (item.status === 'failed' || item.status === 'cancelled' || item.status === 'timeout') {
+    if (item.status === 'failed' || item.status === 'cancelled' || item.status === 'timeout' || item.status === 'deleted') {
       throw new Error(`Prediction ${item.status}${item.error ? `: ${item.error}` : ''} (task_id: ${id})`);
     }
     if (opts.signal?.cancelled) throw new Error(`cancelled (task_id: ${id})`);
