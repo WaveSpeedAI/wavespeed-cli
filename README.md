@@ -115,12 +115,14 @@ MiniMax H3 is the open-weights default: cheap, fast, and native stereo audio —
 No MCP server, no daemon. The CLI **is** the interface — agents already know how to run shell commands.
 
 ```bash
-wavespeed skill install        # writes .claude/skills/wavespeed/SKILL.md
+wavespeed skill install        # writes .claude/skills/wavespeed/SKILL.md and .agents/skills/wavespeed/SKILL.md
 ```
 
 The skill teaches the agent the three-step pattern: `models` to find, `run <id> -h` to discover params, `run <id> -p "…" --json` to execute. Every command supports `--json` for clean piping.
 
 **OpenCode** loads the same file with no extra steps — `.claude/skills/` is on its skill search path.
+
+**Codex** reads `.agents/skills/`, which the same command writes. For a one-line install that also wires up the MCP server: `codex plugin marketplace add WaveSpeedAI/codex-plugin-wavespeed-cli` ([WaveSpeedAI/codex-plugin-wavespeed-cli](https://github.com/WaveSpeedAI/codex-plugin-wavespeed-cli)).
 
 **DeepSeek Harness (dsh)**: the same skill is packaged for dsh's `.dsh/skills` layout at [WaveSpeedAI/wavespeed-dsh-skill](https://github.com/WaveSpeedAI/wavespeed-dsh-skill).
 
