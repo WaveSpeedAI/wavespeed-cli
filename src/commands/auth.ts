@@ -121,7 +121,7 @@ async function loginFlow(opts: { apiKey?: string; browser: boolean }): Promise<v
   console.log(chalk.bold('Try it:'));
   console.log('  ' + chalk.cyan('wavespeed models                       # browse the catalog'));
   console.log('  ' + chalk.cyan('wavespeed run wavespeed-ai/z-image/turbo -p "a cyberpunk skyline at golden hour"'));
-  console.log('  ' + chalk.cyan('wavespeed run bytedance/seedance-2.5/text-to-video -p "drone shot over snowy peaks"'));
+  console.log('  ' + chalk.cyan('wavespeed run wavespeed-ai/minimax-h3/text-to-video -p "drone shot over snowy peaks"'));
   console.log();
 }
 

@@ -84,8 +84,8 @@ wavespeed run ... -p "..." --json | jq '.outputs[0]'
                 "input": { "aspect_ratio": "16:9", "resolution": "2k" } },
     "social": { "model": "bytedance/seedream-v5.0-pro",
                 "input": { "aspect_ratio": "1:1",  "resolution": "1k" } },
-    "vid":    { "model": "bytedance/seedance-2.5/text-to-video",
-                "input": { "resolution": "720p", "duration": 5 } }
+    "vid":    { "model": "wavespeed-ai/minimax-h3/text-to-video",
+                "input": { "resolution": "768p", "duration": 5 } }
   }
 }
 ```
@@ -103,12 +103,12 @@ Resolution: positional with `/` is a model ID; otherwise looked up as an alias. 
 |---|---|
 | Text → image | `bytedance/seedream-v5.0-pro` |
 | Image edit | `bytedance/seedream-v5.0-pro/edit` |
-| Text → video | `bytedance/seedance-2.5/text-to-video` |
-| Image → video | `bytedance/seedance-2.5/image-to-video` |
-| Video edit | `bytedance/seedance-2.5/video-edit` |
-| Video extend | `bytedance/seedance-2.5/video-extend` |
+| Text → video | `wavespeed-ai/minimax-h3/text-to-video` |
+| Image → video | `wavespeed-ai/minimax-h3/image-to-video` |
+| Video edit | `wavespeed-ai/minimax-h3/video-edit` |
+| Video extend | `wavespeed-ai/minimax-h3/video-extend` |
 
-Browse alternatives with `wavespeed models <query>`.
+MiniMax H3 is the open-weights default: cheap, fast, and native stereo audio — the best place to start. When you need the highest quality, switch to `bytedance/seedance-2.5/*` (text-to-video, image-to-video, video-edit, video-extend). Browse alternatives with `wavespeed models <query>`.
 
 ## Use from coding agents
 
