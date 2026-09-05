@@ -124,6 +124,8 @@ The skill teaches the agent the three-step pattern: `models` to find, `run <id> 
 
 **DeepSeek Harness (dsh)**: the same skill is packaged for dsh's `.dsh/skills` layout at [WaveSpeedAI/wavespeed-dsh-skill](https://github.com/WaveSpeedAI/wavespeed-dsh-skill).
 
+**Kimi Code CLI** reads `.claude/skills/` too, so `wavespeed skill install` is enough. For a one-line install that also wires up the MCP server, use the plugin: `/plugins install https://github.com/WaveSpeedAI/wavespeed-kimi-plugin` ([WaveSpeedAI/wavespeed-kimi-plugin](https://github.com/WaveSpeedAI/wavespeed-kimi-plugin)).
+
 ## Commands
 
 ```
