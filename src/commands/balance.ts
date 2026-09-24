@@ -34,9 +34,8 @@ export function registerBalance(program: Command): void {
         return;
       }
 
-      const display = balance.toFixed(balance < 10 ? 3 : 2);
       console.log();
-      console.log(chalk.bold('Balance: ') + chalk.green(`$${display}`));
+      console.log(chalk.bold('Balance: ') + chalk.green(`$${balance}`));
       console.log(chalk.gray('Top up:  ') + chalk.cyan(TOPUP_URL));
       console.log();
 
