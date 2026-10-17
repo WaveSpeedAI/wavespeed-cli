@@ -144,12 +144,18 @@ async function httpError(res: Response, method: string, path: string): Promise<E
   } catch {
     /* non-JSON body (gateway error page, empty response) — fall back below */
   }
-  if (detail) return new Error(detail);
-  return new Error(`${method} ${path} failed: ${res.status} ${res.statusText}`);
+  const err: Error & { status?: number } = detail
+    ? new Error(detail)
+    : new Error(`${method} ${path} failed: ${res.status} ${res.statusText}`);
+  err.status = res.status;
+  return err;
 }
 
-async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${getBaseUrl()}${path}`, { headers: authHeaders() });
+async function apiGet<T>(path: string, opts: { timeoutMs?: number } = {}): Promise<T> {
+  const res = await fetch(`${getBaseUrl()}${path}`, {
+    headers: authHeaders(),
+    signal: opts.timeoutMs ? AbortSignal.timeout(opts.timeoutMs) : undefined,
+  });
   if (!res.ok) throw await httpError(res, 'GET', path);
   const json = (await res.json()) as Envelope<T>;
   if (json.code !== 200) throw new Error(json.message || `API returned code ${json.code}`);
@@ -226,8 +232,42 @@ export async function fetchHistory(
   return apiPost('/api/v3/predictions', body);
 }
 
+// A hung socket would otherwise stall the CLI forever. 30s is far above a
+// healthy status read, so it only trips on a dead connection.
+const POLL_REQUEST_TIMEOUT_MS = 30_000;
+
 export async function fetchPrediction(id: string): Promise<HistoryItem> {
-  return apiGet<HistoryItem>(`/api/v3/predictions/${id}/result`);
+  return apiGet<HistoryItem>(`/api/v3/predictions/${id}/result`, {
+    timeoutMs: POLL_REQUEST_TIMEOUT_MS,
+  });
+}
+
+// Same set as wavespeed-python. A thrown error with no HTTP status is a
+// network failure or timeout; envelope/JSON errors carry no status either but
+// never reach here as a transient fault, so only fetch-level errors count.
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const MAX_POLL_RETRIES = 5;
+
+function isTransient(err: any): boolean {
+  if (typeof err?.status === 'number') return RETRYABLE_STATUS.has(err.status);
+  return err instanceof TypeError || err?.name === 'TimeoutError' || err?.name === 'AbortError';
+}
+
+async function fetchPredictionWithRetry(id: string, retryDelayMs: number): Promise<HistoryItem> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetchPrediction(id);
+    } catch (err: any) {
+      const reason = err?.message ?? String(err);
+      if (!isTransient(err)) throw new Error(`${reason} (task_id: ${id})`);
+      if (attempt >= MAX_POLL_RETRIES) {
+        throw new Error(
+          `Status check failed after ${attempt + 1} attempts: ${reason} (task_id: ${id}) — the task may still be running`,
+        );
+      }
+      await new Promise((r) => setTimeout(r, retryDelayMs * (attempt + 1)));
+    }
+  }
 }
 
 export async function deletePredictions(ids: string[]): Promise<void> {
@@ -275,15 +315,16 @@ export type PollHandle = { cancel: () => void };
 
 /**
  * Poll a prediction until it reaches a terminal status. `onTick` fires each
- * round so the caller can keep a spinner honest.
+ * round so the caller can keep a spinner honest. Transient status-read
+ * failures are retried; submit is never retried.
  */
 export async function waitForPrediction(
   id: string,
-  opts: { intervalMs?: number; onTick?: (status: string) => void; signal?: { cancelled: boolean } } = {},
+  opts: { intervalMs?: number; retryDelayMs?: number; onTick?: (status: string) => void; signal?: { cancelled: boolean } } = {},
 ): Promise<HistoryItem> {
   const interval = opts.intervalMs ?? 1000;
   for (;;) {
-    const item = await fetchPrediction(id);
+    const item = await fetchPredictionWithRetry(id, opts.retryDelayMs ?? 1000);
     opts.onTick?.(item.status);
     if (item.status === 'completed') return item;
     if (item.status === 'failed' || item.status === 'cancelled' || item.status === 'timeout' || item.status === 'deleted') {
