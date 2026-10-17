@@ -95,6 +95,7 @@ export async function fetchModels(opts: FetchModelsOptions = {}): Promise<{
 
   const res = await fetch(`${baseUrl}/api/v3/models`, {
     headers: { Authorization: `Bearer ${apiKey}`, ...clientAttributionHeaders() },
+    signal: AbortSignal.timeout(GET_TIMEOUT_MS),
   });
   if (!res.ok) {
     throw await httpError(res, 'GET', '/api/v3/models');
@@ -115,6 +116,13 @@ export function clearModelsCache(): void {
     /* nothing to clear */
   }
 }
+
+// Per-request timeouts (no overall cap). A hung socket would otherwise stall
+// the CLI forever. Read-only GETs are far below 30s in practice (result p99.9
+// < 1s); the async submit gets more headroom because a timeout there is an
+// ambiguous outcome, not a clean failure.
+export const GET_TIMEOUT_MS = 30_000;
+export const SUBMIT_TIMEOUT_MS = 60_000;
 
 // --- Account + prediction endpoints (not exposed by the wavespeed SDK) ---
 
@@ -151,10 +159,10 @@ async function httpError(res: Response, method: string, path: string): Promise<E
   return err;
 }
 
-async function apiGet<T>(path: string, opts: { timeoutMs?: number } = {}): Promise<T> {
+async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${getBaseUrl()}${path}`, {
     headers: authHeaders(),
-    signal: opts.timeoutMs ? AbortSignal.timeout(opts.timeoutMs) : undefined,
+    signal: AbortSignal.timeout(GET_TIMEOUT_MS),
   });
   if (!res.ok) throw await httpError(res, 'GET', path);
   const json = (await res.json()) as Envelope<T>;
@@ -162,11 +170,12 @@ async function apiGet<T>(path: string, opts: { timeoutMs?: number } = {}): Promi
   return json.data;
 }
 
-async function apiPost<T>(path: string, body: unknown): Promise<T> {
+async function apiPost<T>(path: string, body: unknown, opts: { timeoutMs?: number } = {}): Promise<T> {
   const res = await fetch(`${getBaseUrl()}${path}`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal: opts.timeoutMs ? AbortSignal.timeout(opts.timeoutMs) : undefined,
   });
   if (!res.ok) throw await httpError(res, 'POST', path);
   const json = (await res.json()) as Envelope<T>;
@@ -232,14 +241,8 @@ export async function fetchHistory(
   return apiPost('/api/v3/predictions', body);
 }
 
-// A hung socket would otherwise stall the CLI forever. 30s is far above a
-// healthy status read, so it only trips on a dead connection.
-const POLL_REQUEST_TIMEOUT_MS = 30_000;
-
 export async function fetchPrediction(id: string): Promise<HistoryItem> {
-  return apiGet<HistoryItem>(`/api/v3/predictions/${id}/result`, {
-    timeoutMs: POLL_REQUEST_TIMEOUT_MS,
-  });
+  return apiGet<HistoryItem>(`/api/v3/predictions/${id}/result`);
 }
 
 // Same set as wavespeed-python. A thrown error with no HTTP status is a
@@ -308,7 +311,21 @@ export async function submitPrediction(
 ): Promise<SubmitResult> {
   const body: Record<string, unknown> = { ...input };
   if (opts.sync) body.enable_sync_mode = true;
-  return apiPost<SubmitResult>(`/api/v3/${model}`, body);
+  // sync mode legitimately holds the request until the task finishes, so only
+  // async submits get the per-request timeout.
+  try {
+    return await apiPost<SubmitResult>(`/api/v3/${model}`, body, {
+      timeoutMs: opts.sync ? undefined : SUBMIT_TIMEOUT_MS,
+    });
+  } catch (err: any) {
+    // Never retried: the server may already have created (and billed) the task.
+    if (err?.name === 'TimeoutError') {
+      throw new Error(
+        `Submission outcome unknown: no response within ${SUBMIT_TIMEOUT_MS / 1000}s. The task may have been created — run \`wavespeed history\` to check before retrying.`,
+      );
+    }
+    throw err;
+  }
 }
 
 export type PollHandle = { cancel: () => void };

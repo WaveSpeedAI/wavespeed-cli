@@ -58,3 +58,21 @@ describe('submitPrediction', () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('per-request timeouts', () => {
+  it('submit uses a 60s signal, status GET 30s, sync submit none', async () => {
+    const spy = vi.spyOn(AbortSignal, 'timeout');
+    stub([ok('created'), ok('completed')]);
+    await submitPrediction('m/x', {});
+    await waitForPrediction('t1', { retryDelayMs: 1 });
+    await submitPrediction('m/x', {}, { sync: true });
+    expect(spy.mock.calls.map((c) => c[0])).toEqual([60_000, 30_000]);
+    spy.mockRestore();
+  });
+
+  it('submit timeout gives the ambiguous message with exactly one POST', async () => {
+    const fn = stub([new DOMException('timed out', 'TimeoutError'), ok('created')]);
+    await expect(submitPrediction('m/x', {})).rejects.toThrow(/outcome unknown.*may have been created/);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+});

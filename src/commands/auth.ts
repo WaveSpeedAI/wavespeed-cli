@@ -7,6 +7,7 @@ import clipboard from 'clipboardy';
 import { userConfig, getBaseUrl, getApiKey, loadProjectConfig, PROJECT_FILE } from '../lib/config.js';
 import { LINKS } from '../lib/links.js';
 import { clientAttributionHeaders } from '../lib/client-headers.js';
+import { GET_TIMEOUT_MS } from '../lib/api.js';
 
 const KEY_URL = 'https://wavespeed.ai/accesskey';
 
@@ -47,6 +48,7 @@ async function validateKey(
   try {
     res = await fetch(`${baseUrl}/api/v3/balance`, {
       headers: { Authorization: `Bearer ${apiKey}`, ...clientAttributionHeaders() },
+      signal: AbortSignal.timeout(GET_TIMEOUT_MS),
     });
   } catch (err: any) {
     return { ok: false, reason: `Could not reach ${baseUrl}: ${err.message}` };
