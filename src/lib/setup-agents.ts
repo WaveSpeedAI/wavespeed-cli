@@ -16,7 +16,9 @@ export function validateModel(model: string): string {
   return model;
 }
 
-// ---------- JSON agents (Claude Code, OpenCode) ----------
+import { parseDocument } from 'yaml';
+
+// ---------- JSON agents (Claude Code, OpenCode, OpenClaw) ----------
 
 export interface JsonEdit {
   path: string[];
@@ -101,6 +103,189 @@ export function opencodeEdits(model: string): JsonEdit[] {
     },
     { path: ['model'], value: `wavespeed/${m}` },
   ];
+}
+
+export function openclawEdits(model: string, doc: Obj): JsonEdit[] {
+  const m = validateModel(model);
+  const edits: JsonEdit[] = [
+    { path: ['agents', 'defaults', 'model', 'primary'], value: `wavespeed/${m}` },
+    { path: ['models', 'mode'], value: 'merge' },
+    {
+      path: ['models', 'providers', 'wavespeed'],
+      value: {
+        baseUrl: LLM_BASE_URL,
+        apiKey: `\${${KEY_ENV}}`,
+        api: 'openai-completions',
+        models: [{ id: m, name: m, contextWindow: 200000, maxTokens: 32000 }],
+      },
+    },
+  ];
+  // A user-maintained model allowlist would otherwise reject the new model.
+  const agents = doc.agents as Obj | undefined;
+  const defaults = agents?.defaults as Obj | undefined;
+  if (isObj(defaults?.models)) edits.push({ path: ['agents', 'defaults', 'models', `wavespeed/${m}`], value: {} });
+  return edits;
+}
+
+// ---------- Hermes (YAML, edited in place so a large commented config keeps its layout) ----------
+
+export interface HermesPrevious {
+  hadModelBlock: boolean;
+  /** Raw source text of the scalar we replaced, or undefined when the key did not exist. */
+  defaultRaw?: string;
+  providerRaw?: string;
+  hadList: boolean;
+  /** Source text of a pre-existing wavespeed entry that we replaced. */
+  entryRaw?: string;
+}
+
+const lineStart = (t: string, off: number) => t.lastIndexOf('\n', off - 1) + 1;
+const lineEnd = (t: string, off: number) => {
+  const i = t.indexOf('\n', off);
+  return i < 0 ? t.length : i + 1;
+};
+
+/** End of the line holding the last real character before `off` (a node's range can run over trailing blank lines). */
+const contentLineEnd = (t: string, off: number) => lineEnd(t, t.slice(0, off).trimEnd().length - 1);
+
+interface TextEdit { start: number; end: number; text: string }
+
+function applyEdits(text: string, edits: TextEdit[]): string {
+  return [...edits].sort((x, y) => y.start - x.start).reduce((t, e) => t.slice(0, e.start) + e.text + t.slice(e.end), text);
+}
+
+function entryLines(pad: string): string {
+  return [
+    `${pad}- name: wavespeed`,
+    `${pad}  base_url: ${LLM_BASE_URL}`,
+    `${pad}  key_env: ${KEY_ENV}`,
+    `${pad}  api_mode: chat_completions`,
+    '',
+  ].join('\n');
+}
+
+type YNode = { range?: [number, number, number] | null; value?: unknown; items?: any[]; flow?: boolean; get?: (k: string, keep?: boolean) => any };
+
+function dashPad(text: string, itemStart: number): { dash: number; pad: string } {
+  const dash = text.lastIndexOf('-', itemStart - 1);
+  return { dash, pad: ' '.repeat(dash - lineStart(text, dash)) };
+}
+
+function parseYaml(text: string) {
+  const doc = parseDocument(text);
+  if (doc.errors.length) throw new Error(`config.yaml is not valid YAML: ${doc.errors[0].message}`);
+  return doc;
+}
+
+export function applyHermesYaml(input: string, model: string): { text: string; previous: HermesPrevious } {
+  const m = validateModel(model);
+  let text = input;
+  if (text !== '' && !text.endsWith('\n')) text += '\n';
+  const doc = parseYaml(text);
+  const edits: TextEdit[] = [];
+  let tail = '';
+  const previous: HermesPrevious = { hadModelBlock: false, hadList: false };
+  const want = { default: JSON.stringify(m), provider: '"wavespeed"' } as const;
+
+  const root = doc.contents as YNode | null;
+  const modelNode = root?.get?.('model', true) as YNode | undefined;
+  if (modelNode === undefined || modelNode === null) {
+    tail += `model:\n  default: ${want.default}\n  provider: ${want.provider}\n`;
+  } else if (modelNode.items) {
+    previous.hadModelBlock = true;
+    const missing: string[] = [];
+    for (const key of ['default', 'provider'] as const) {
+      const v = modelNode.get?.(key, true) as YNode | undefined;
+      if (v && v.range) {
+        const raw = text.slice(v.range[0], v.range[1]);
+        if (key === 'default') previous.defaultRaw = raw; else previous.providerRaw = raw;
+        edits.push({ start: v.range[0], end: v.range[1], text: want[key] });
+      } else {
+        missing.push(key);
+      }
+    }
+    if (missing.length) {
+      const first = modelNode.items[0]?.key?.range?.[0] as number | undefined;
+      if (first === undefined) throw new Error('model: block in config.yaml is empty or inline; edit it by hand');
+      const pad = ' '.repeat(first - lineStart(text, first));
+      edits.push({ start: lineStart(text, first), end: lineStart(text, first), text: missing.map((k) => `${pad}${k}: ${want[k as 'default']}\n`).join('') });
+    }
+  } else {
+    throw new Error('model: in config.yaml is not a block; edit it by hand');
+  }
+
+  const list = root?.get?.('custom_providers', true) as YNode | undefined;
+  if (list === undefined || list === null) {
+    tail += `custom_providers:\n${entryLines('  ')}`;
+  } else if (list.items && list.flow !== true) {
+    previous.hadList = true;
+    const mine = list.items.find((it: any) => it?.get?.('name') === 'wavespeed');
+    if (mine?.range) {
+      const { dash, pad } = dashPad(text, mine.range[0]);
+      const end = contentLineEnd(text, mine.range[1]);
+      previous.entryRaw = text.slice(lineStart(text, dash), end);
+      edits.push({ start: lineStart(text, dash), end, text: entryLines(pad) });
+    } else if (list.items.length > 0) {
+      const last = list.items[list.items.length - 1];
+      const { pad } = dashPad(text, list.items[0].range[0]);
+      const at = contentLineEnd(text, last.range[1]);
+      edits.push({ start: at, end: at, text: entryLines(pad) });
+    } else {
+      throw new Error('custom_providers: in config.yaml is empty; edit it by hand');
+    }
+  } else if (list.range && list.value === null) {
+    // `custom_providers:` with nothing under it
+    previous.hadList = false;
+    const at = lineEnd(text, list.range[0]);
+    edits.push({ start: at, end: at, text: entryLines('  ') });
+  } else {
+    throw new Error('custom_providers: in config.yaml is not a block list; edit it by hand');
+  }
+
+  return { text: applyEdits(text, edits) + tail, previous };
+}
+
+export function revertHermesYaml(input: string, previous: HermesPrevious): string {
+  let text = input;
+  if (!previous.hadModelBlock) {
+    text = text.replace(/^model:\n {2}default: "[^\n]*"\n {2}provider: "wavespeed"\n/m, '');
+  } else {
+    const doc = parseYaml(text);
+    const modelNode = (doc.contents as YNode | null)?.get?.('model', true) as YNode | undefined;
+    const edits: TextEdit[] = [];
+    for (const [key, raw] of [['default', previous.defaultRaw], ['provider', previous.providerRaw]] as const) {
+      const v = modelNode?.get?.(key, true) as YNode | undefined;
+      if (!v?.range) continue;
+      if (raw !== undefined) {
+        edits.push({ start: v.range[0], end: v.range[1], text: raw });
+      } else {
+        const pair = modelNode!.items!.find((p: any) => p.key?.value === key);
+        const ks = pair.key.range[0] as number;
+        edits.push({ start: lineStart(text, ks), end: lineEnd(text, v.range[1]), text: '' });
+      }
+    }
+    text = applyEdits(text, edits);
+  }
+
+  const doc = parseYaml(text);
+  const list = (doc.contents as YNode | null)?.get?.('custom_providers', true) as YNode | undefined;
+  if (list?.items) {
+    const mine = list.items.find((it: any) => it?.get?.('name') === 'wavespeed');
+    if (mine?.range) {
+      const { dash } = dashPad(text, mine.range[0]);
+      const start = lineStart(text, dash);
+      const end = contentLineEnd(text, mine.range[1]);
+      text = text.slice(0, start) + (previous.entryRaw ?? '') + text.slice(end);
+    }
+    if (!previous.hadList) {
+      const again = parseYaml(text);
+      const l2 = (again.contents as YNode | null)?.get?.('custom_providers', true) as YNode | undefined;
+      if (l2?.items?.length === 0 || (l2 && l2.items === undefined)) {
+        text = text.replace(/^custom_providers:[ \t]*\n?/m, '');
+      }
+    }
+  }
+  return text;
 }
 
 // ---------- Codex (TOML, edited as text so the user's comments survive) ----------

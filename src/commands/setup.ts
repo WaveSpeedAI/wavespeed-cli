@@ -3,23 +3,27 @@ import chalk from 'chalk';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { confirm } from '@inquirer/prompts';
+import JSON5 from 'json5';
 import { getApiKey, userConfig } from '../lib/config.js';
 import { clientAttributionHeaders } from '../lib/client-headers.js';
 import { emitJson, emitJsonError, info, setJsonMode } from '../lib/log.js';
 import {
-  CLAUDE_BASE_URL, DEFAULT_MODEL, KEY_ENV, LLM_BASE_URL, JsonPrevious,
-  applyCodexToml, applyJson, claudeEdits, opencodeEdits, revertCodexToml, revertJson, validateModel,
+  DEFAULT_MODEL, KEY_ENV, LLM_BASE_URL, HermesPrevious, JsonPrevious,
+  applyCodexToml, applyHermesYaml, applyJson, claudeEdits, openclawEdits, opencodeEdits,
+  revertCodexToml, revertHermesYaml, revertJson, validateModel,
 } from '../lib/setup-agents.js';
 
-type AgentId = 'claude' | 'codex' | 'opencode';
+type AgentId = 'claude' | 'codex' | 'opencode' | 'openclaw' | 'hermes' | 'cline';
 
 interface Agent {
   id: AgentId;
   name: string;
   file: string;
   command: string;
-  kind: 'json' | 'toml';
+  /** json/json5: merged key by key; toml/yaml: edited as text; cline: delegated to `cline auth`. */
+  kind: 'json' | 'json5' | 'toml' | 'yaml' | 'cline';
   /** The key ends up inside the config file (otherwise it is read from $WAVESPEED_API_KEY). */
   keyInFile: boolean;
 }
@@ -29,6 +33,10 @@ const AGENTS: Agent[] = [
   { id: 'claude', name: 'Claude Code', file: path.join(home, '.claude', 'settings.json'), command: 'claude', kind: 'json', keyInFile: true },
   { id: 'codex', name: 'Codex', file: path.join(home, '.codex', 'config.toml'), command: 'codex', kind: 'toml', keyInFile: false },
   { id: 'opencode', name: 'OpenCode', file: path.join(home, '.config', 'opencode', 'opencode.json'), command: 'opencode', kind: 'json', keyInFile: false },
+  { id: 'openclaw', name: 'OpenClaw', file: path.join(home, '.openclaw', 'openclaw.json'), command: 'openclaw', kind: 'json5', keyInFile: false },
+  { id: 'hermes', name: 'Hermes', file: path.join(home, '.hermes', 'config.yaml'), command: 'hermes', kind: 'yaml', keyInFile: false },
+  // Cline's CLI keeps provider settings (including the key) in this file; we write it only through `cline auth`.
+  { id: 'cline', name: 'Cline', file: path.join(home, '.cline', 'data', 'settings', 'providers.json'), command: 'cline', kind: 'cline', keyInFile: true },
 ];
 
 const shown = (p: string) => p.replace(home, '~');
@@ -60,12 +68,12 @@ export async function selfCheck(apiKey: string, model: string): Promise<{ ok: bo
   }
 }
 
-function readJson(file: string): Record<string, unknown> {
+function readJson(file: string, json5 = false): Record<string, unknown> {
   if (!fs.existsSync(file)) return {};
   const raw = fs.readFileSync(file, 'utf8');
   if (raw.trim() === '') return {};
   try {
-    const v = JSON.parse(raw);
+    const v = json5 ? JSON5.parse(raw) : JSON.parse(raw);
     if (v && typeof v === 'object' && !Array.isArray(v)) return v;
   } catch {
     /* fall through */
@@ -90,7 +98,7 @@ function envHint(): string {
 export function registerSetup(program: Command): void {
   program
     .command('setup [agent]')
-    .description('Point a coding agent (claude, codex, opencode) at the WaveSpeed LLM gateway')
+    .description('Point a coding agent (claude, codex, opencode, openclaw, hermes, cline) at the WaveSpeed LLM gateway')
     .option('--model <id>', `Model to use (default: ${DEFAULT_MODEL})`)
     .option('--dry-run', 'Show what would change without writing anything')
     .option('--undo', "Restore the agent's config to what it was before setup")
@@ -120,22 +128,34 @@ export function registerSetup(program: Command): void {
       // ----- undo -----
       if (opts.undo) {
         try {
+          const state = userConfig.get('setup')?.[agent.id];
+          const forget = () => {
+            const rest = { ...(userConfig.get('setup') ?? {}) };
+            delete rest[agent.id];
+            userConfig.set('setup', rest);
+          };
           if (agent.kind === 'toml') {
             if (!fs.existsSync(agent.file)) return fail(`${shown(agent.file)} does not exist; nothing to undo`);
             const before = fs.readFileSync(agent.file, 'utf8');
             const after = revertCodexToml(before);
             if (!opts.dryRun && after !== before) fs.writeFileSync(agent.file, after);
-          } else {
-            const state = userConfig.get('setup')?.[agent.id];
-            if (!state) return fail(`No recorded ${agent.name} setup to undo`);
-            const doc = readJson(state.file);
-            const after = JSON.stringify(revertJson(doc, state.previous as JsonPrevious[]), null, 2) + '\n';
+          } else if (!state) {
+            return fail(`No recorded ${agent.name} setup to undo`);
+          } else if (agent.kind === 'cline') {
+            const bak = `${agent.file}.wavespeed.bak`;
             if (!opts.dryRun) {
-              fs.writeFileSync(state.file, after);
-              const rest = { ...(userConfig.get('setup') ?? {}) };
-              delete rest[agent.id];
-              userConfig.set('setup', rest);
+              if ((state.previous as { existed: boolean }).existed && fs.existsSync(bak)) fs.copyFileSync(bak, agent.file);
+              else fs.rmSync(agent.file, { force: true });
+              fs.rmSync(bak, { force: true });
+              forget();
             }
+          } else if (agent.kind === 'yaml') {
+            const after = revertHermesYaml(fs.readFileSync(state.file, 'utf8'), state.previous as HermesPrevious);
+            if (!opts.dryRun) { fs.writeFileSync(state.file, after); forget(); }
+          } else {
+            const doc = readJson(state.file, agent.kind === 'json5');
+            const after = JSON.stringify(revertJson(doc, state.previous as JsonPrevious[]), null, 2) + '\n';
+            if (!opts.dryRun) { fs.writeFileSync(state.file, after); forget(); }
           }
         } catch (err: any) {
           return fail(err.message ?? String(err));
@@ -155,15 +175,24 @@ export function registerSetup(program: Command): void {
         return fail(err.message);
       }
 
-      let next: string;
-      let previous: JsonPrevious[] = [];
+      let next = '';
+      let previous: unknown = [];
       try {
         if (agent.kind === 'toml') {
           next = applyCodexToml(fs.existsSync(agent.file) ? fs.readFileSync(agent.file, 'utf8') : '', model);
+        } else if (agent.kind === 'yaml') {
+          const r = applyHermesYaml(fs.existsSync(agent.file) ? fs.readFileSync(agent.file, 'utf8') : '', model);
+          next = r.text;
+          previous = r.previous;
+        } else if (agent.kind === 'cline') {
+          previous = { existed: fs.existsSync(agent.file) };
+          if (!onPath('cline')) throw new Error('Cline CLI not found. Install it with `npm i -g cline`. (The VS Code extension has no config file; set it up in its settings UI.)');
         } else {
-          const result = applyJson(readJson(agent.file), agent.id === 'claude' ? claudeEdits(model, apiKey) : opencodeEdits(model));
-          previous = result.previous;
-          next = JSON.stringify(result.doc, null, 2) + '\n';
+          const base = readJson(agent.file, agent.kind === 'json5');
+          const edits = agent.id === 'claude' ? claudeEdits(model, apiKey) : agent.id === 'openclaw' ? openclawEdits(model, base) : opencodeEdits(model);
+          const r = applyJson(base, edits);
+          previous = r.previous;
+          next = JSON.stringify(r.doc, null, 2) + '\n';
         }
       } catch (err: any) {
         return fail(err.message ?? String(err));
@@ -184,8 +213,17 @@ export function registerSetup(program: Command): void {
         if (!(await confirm({ message: 'Continue?', default: false }))) return fail('Cancelled; nothing written.');
       }
 
-      writeFile(agent.file, next, agent.keyInFile);
-      if (agent.kind === 'json') userConfig.set('setup', { ...(userConfig.get('setup') ?? {}), [agent.id]: { file: agent.file, previous } });
+      if (agent.kind === 'cline') {
+        const bak = `${agent.file}.wavespeed.bak`;
+        if (fs.existsSync(agent.file) && !fs.existsSync(bak)) fs.copyFileSync(agent.file, bak);
+        const r = spawnSync('cline', ['auth', '-p', 'openai-compatible', '-k', apiKey, '-b', LLM_BASE_URL, '-m', model], { stdio: ['ignore', 'ignore', 'pipe'], encoding: 'utf8', shell: process.platform === 'win32' });
+        if (r.status !== 0) return fail(`cline auth failed: ${(r.stderr || r.error?.message || '').trim().slice(0, 300)}`);
+      } else {
+        const hadComments = agent.kind === 'json5' && exists && /^\s*\/\/|\/\*/m.test(fs.readFileSync(agent.file, 'utf8'));
+        writeFile(agent.file, next, agent.keyInFile);
+        if (hadComments) info(chalk.yellow(`Comments in ${shown(agent.file)} were not kept; the original is saved as ${shown(agent.file)}.wavespeed.bak`));
+      }
+      if (agent.kind !== 'toml') userConfig.set('setup', { ...(userConfig.get('setup') ?? {}), [agent.id]: { file: agent.file, previous } });
 
       const check = opts.check ? await selfCheck(apiKey, model) : null;
       if (opts.json) {
