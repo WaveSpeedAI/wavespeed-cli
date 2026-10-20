@@ -127,6 +127,66 @@ export function openclawEdits(model: string, doc: Obj): JsonEdit[] {
   return edits;
 }
 
+export function qwenEdits(model: string): JsonEdit[] {
+  const m = validateModel(model);
+  return [
+    { path: ['modelProviders', 'wavespeed'], value: [{ id: m, name: m, envKey: KEY_ENV, baseUrl: LLM_BASE_URL }] },
+    { path: ['providerProtocol', 'wavespeed'], value: 'openai' },
+    { path: ['security', 'auth', 'selectedType'], value: 'openai' },
+    { path: ['model', 'name'], value: m },
+  ];
+}
+
+// ---------- Mini-Agent (flat YAML scalars; the key lives in the file) ----------
+
+export function miniAgentValues(model: string, apiKey: string): Record<string, string> {
+  return { api_key: apiKey, api_base: LLM_BASE_URL, model: validateModel(model), provider: 'openai' };
+}
+
+/** Set top-level `key: "value"` pairs in place. Returns the raw text each key held before (null = absent). */
+export function applyYamlScalars(input: string, values: Record<string, string>): { text: string; previous: Record<string, string | null> } {
+  let text = input;
+  if (text !== '' && !text.endsWith('\n')) text += '\n';
+  const doc = parseDocument(text);
+  if (doc.errors.length) throw new Error(`config.yaml is not valid YAML: ${doc.errors[0].message}`);
+  const root = doc.contents as { get?: (k: string, keep?: boolean) => any } | null;
+  // null (not undefined) marks "absent": the state is stored as JSON, which drops undefined values.
+  const previous: Record<string, string | null> = {};
+  const edits: { start: number; end: number; text: string }[] = [];
+  let tail = '';
+  for (const [key, value] of Object.entries(values)) {
+    const node = root?.get?.(key, true);
+    const quoted = JSON.stringify(value);
+    if (node?.range) {
+      previous[key] = text.slice(node.range[0], node.range[1]);
+      edits.push({ start: node.range[0], end: node.range[1], text: quoted });
+    } else {
+      previous[key] = null;
+      tail += `${key}: ${quoted}\n`;
+    }
+  }
+  return { text: [...edits].sort((a, b) => b.start - a.start).reduce((t, e) => t.slice(0, e.start) + e.text + t.slice(e.end), text) + tail, previous };
+}
+
+export function revertYamlScalars(input: string, previous: Record<string, string | null>): string {
+  let text = input;
+  const doc = parseDocument(text);
+  const root = doc.contents as { get?: (k: string, keep?: boolean) => any; items?: any[] } | null;
+  const edits: { start: number; end: number; text: string }[] = [];
+  for (const [key, raw] of Object.entries(previous)) {
+    const node = root?.get?.(key, true);
+    if (!node?.range) continue;
+    if (raw !== null) {
+      edits.push({ start: node.range[0], end: node.range[1], text: raw });
+    } else {
+      const pair = root!.items!.find((p: any) => p.key?.value === key);
+      const ks = pair.key.range[0] as number;
+      edits.push({ start: lineStart(text, ks), end: lineEnd(text, node.range[1]), text: '' });
+    }
+  }
+  return [...edits].sort((a, b) => b.start - a.start).reduce((t, e) => t.slice(0, e.start) + e.text + t.slice(e.end), text);
+}
+
 // ---------- Hermes (YAML, edited in place so a large commented config keeps its layout) ----------
 
 export interface HermesPrevious {

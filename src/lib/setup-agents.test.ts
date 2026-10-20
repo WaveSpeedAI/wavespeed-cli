@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyCodexToml, applyHermesYaml, applyJson, claudeEdits, openclawEdits, opencodeEdits, revertCodexToml, revertHermesYaml, revertJson, validateModel,
+  applyCodexToml, applyHermesYaml, applyJson, applyYamlScalars, claudeEdits, miniAgentValues, openclawEdits, opencodeEdits, qwenEdits, revertCodexToml, revertHermesYaml, revertJson, revertYamlScalars, validateModel,
 } from './setup-agents.js';
 
 describe('applyJson / revertJson', () => {
@@ -132,5 +132,41 @@ describe('hermes yaml', () => {
     expect(() => applyHermesYaml('a: [1, 2', 'a/b')).toThrow();
     expect(() => applyHermesYaml('model: gpt-5\n', 'a/b')).toThrow();
     expect(() => applyHermesYaml('model:\n  default: x\ncustom_providers: []\n', 'a/b')).toThrow();
+  });
+});
+
+describe('qwen', () => {
+  it('adds the provider and round-trips', () => {
+    const original: any = { model: { name: 'qwen3' }, security: { auth: { selectedType: 'qwen-oauth' } }, modelProviders: { openai: [{ id: 'x' }] } };
+    const doc = structuredClone(original);
+    const { previous } = applyJson(doc, qwenEdits('a/b'));
+    expect(doc.modelProviders.wavespeed[0]).toMatchObject({ id: 'a/b', envKey: 'WAVESPEED_API_KEY', baseUrl: 'https://llm.wavespeed.ai/v1' });
+    expect(doc.providerProtocol.wavespeed).toBe('openai');
+    expect(doc.security.auth.selectedType).toBe('openai');
+    revertJson(doc, previous);
+    expect(doc).toEqual(original);
+  });
+});
+
+describe('mini-agent yaml scalars', () => {
+  const vals = miniAgentValues('a/b', 'sk-1');
+  it('creates a minimal config and reverts to nothing', () => {
+    const { text, previous } = applyYamlScalars('', vals);
+    expect(text).toBe('api_key: "sk-1"\napi_base: "https://llm.wavespeed.ai/v1"\nmodel: "a/b"\nprovider: "openai"\n');
+    expect(revertYamlScalars(text, previous)).toBe('');
+  });
+  it('edits existing values in place and reverts byte-exact', () => {
+    const user = '# my config\napi_key: "YOUR_API_KEY_HERE"\napi_base: "https://api.minimax.io"  # global\nmodel: "MiniMax-M2.5"\nretry:\n  enabled: true\n';
+    const { text, previous } = applyYamlScalars(user, vals);
+    expect(text).toContain('# my config');
+    expect(text).toContain('api_base: "https://llm.wavespeed.ai/v1"  # global');
+    expect(text).toContain('retry:\n  enabled: true');
+    expect(text.trimEnd().endsWith('provider: "openai"')).toBe(true);
+    expect(revertYamlScalars(text, previous)).toBe(user);
+  });
+  it('survives the JSON round trip the saved state goes through', () => {
+    const user = 'api_key: "x"\nmax_steps: 20\n';
+    const { text, previous } = applyYamlScalars(user, vals);
+    expect(revertYamlScalars(text, JSON.parse(JSON.stringify(previous)))).toBe(user);
   });
 });

@@ -11,11 +11,11 @@ import { clientAttributionHeaders } from '../lib/client-headers.js';
 import { emitJson, emitJsonError, info, setJsonMode } from '../lib/log.js';
 import {
   DEFAULT_MODEL, KEY_ENV, LLM_BASE_URL, HermesPrevious, JsonPrevious,
-  applyCodexToml, applyHermesYaml, applyJson, claudeEdits, openclawEdits, opencodeEdits,
-  revertCodexToml, revertHermesYaml, revertJson, validateModel,
+  applyCodexToml, applyHermesYaml, applyJson, applyYamlScalars, claudeEdits, miniAgentValues, openclawEdits, opencodeEdits, qwenEdits,
+  revertCodexToml, revertHermesYaml, revertJson, revertYamlScalars, validateModel,
 } from '../lib/setup-agents.js';
 
-type AgentId = 'claude' | 'codex' | 'opencode' | 'openclaw' | 'hermes' | 'cline';
+type AgentId = 'claude' | 'codex' | 'opencode' | 'openclaw' | 'hermes' | 'cline' | 'qwen' | 'miniagent';
 
 interface Agent {
   id: AgentId;
@@ -23,7 +23,7 @@ interface Agent {
   file: string;
   command: string;
   /** json/json5: merged key by key; toml/yaml: edited as text; cline: delegated to `cline auth`. */
-  kind: 'json' | 'json5' | 'toml' | 'yaml' | 'cline';
+  kind: 'json' | 'json5' | 'toml' | 'yaml' | 'yamlscalars' | 'cline';
   /** The key ends up inside the config file (otherwise it is read from $WAVESPEED_API_KEY). */
   keyInFile: boolean;
 }
@@ -35,6 +35,8 @@ const AGENTS: Agent[] = [
   { id: 'opencode', name: 'OpenCode', file: path.join(home, '.config', 'opencode', 'opencode.json'), command: 'opencode', kind: 'json', keyInFile: false },
   { id: 'openclaw', name: 'OpenClaw', file: path.join(home, '.openclaw', 'openclaw.json'), command: 'openclaw', kind: 'json5', keyInFile: false },
   { id: 'hermes', name: 'Hermes', file: path.join(home, '.hermes', 'config.yaml'), command: 'hermes', kind: 'yaml', keyInFile: false },
+  { id: 'qwen', name: 'Qwen Code', file: path.join(home, '.qwen', 'settings.json'), command: 'qwen', kind: 'json', keyInFile: false },
+  { id: 'miniagent', name: 'Mini-Agent', file: path.join(home, '.mini-agent', 'config', 'config.yaml'), command: 'mini-agent', kind: 'yamlscalars', keyInFile: true },
   // Cline's CLI keeps provider settings (including the key) in this file; we write it only through `cline auth`.
   { id: 'cline', name: 'Cline', file: path.join(home, '.cline', 'data', 'settings', 'providers.json'), command: 'cline', kind: 'cline', keyInFile: true },
 ];
@@ -98,7 +100,7 @@ function envHint(): string {
 export function registerSetup(program: Command): void {
   program
     .command('setup [agent]')
-    .description('Point a coding agent (claude, codex, opencode, openclaw, hermes, cline) at the WaveSpeed LLM gateway')
+    .description('Point a coding agent (claude, codex, opencode, openclaw, hermes, cline, qwen, miniagent) at the WaveSpeed LLM gateway')
     .option('--model <id>', `Model to use (default: ${DEFAULT_MODEL})`)
     .option('--dry-run', 'Show what would change without writing anything')
     .option('--undo', "Restore the agent's config to what it was before setup")
@@ -149,6 +151,12 @@ export function registerSetup(program: Command): void {
               fs.rmSync(bak, { force: true });
               forget();
             }
+          } else if (agent.kind === 'yamlscalars') {
+            const after = revertYamlScalars(fs.readFileSync(state.file, 'utf8'), state.previous as Record<string, string | null>);
+            if (!opts.dryRun) {
+              if (after.trim() === '') fs.rmSync(state.file, { force: true }); else fs.writeFileSync(state.file, after);
+              forget();
+            }
           } else if (agent.kind === 'yaml') {
             const after = revertHermesYaml(fs.readFileSync(state.file, 'utf8'), state.previous as HermesPrevious);
             if (!opts.dryRun) { fs.writeFileSync(state.file, after); forget(); }
@@ -184,12 +192,16 @@ export function registerSetup(program: Command): void {
           const r = applyHermesYaml(fs.existsSync(agent.file) ? fs.readFileSync(agent.file, 'utf8') : '', model);
           next = r.text;
           previous = r.previous;
+        } else if (agent.kind === 'yamlscalars') {
+          const r = applyYamlScalars(fs.existsSync(agent.file) ? fs.readFileSync(agent.file, 'utf8') : '', miniAgentValues(model, apiKey));
+          next = r.text;
+          previous = r.previous;
         } else if (agent.kind === 'cline') {
           previous = { existed: fs.existsSync(agent.file) };
           if (!onPath('cline')) throw new Error('Cline CLI not found. Install it with `npm i -g cline`. (The VS Code extension has no config file; set it up in its settings UI.)');
         } else {
           const base = readJson(agent.file, agent.kind === 'json5');
-          const edits = agent.id === 'claude' ? claudeEdits(model, apiKey) : agent.id === 'openclaw' ? openclawEdits(model, base) : opencodeEdits(model);
+          const edits = agent.id === 'claude' ? claudeEdits(model, apiKey) : agent.id === 'openclaw' ? openclawEdits(model, base) : agent.id === 'qwen' ? qwenEdits(model) : opencodeEdits(model);
           const r = applyJson(base, edits);
           previous = r.previous;
           next = JSON.stringify(r.doc, null, 2) + '\n';
