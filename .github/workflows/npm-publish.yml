@@ -112,3 +112,29 @@ jobs:
           VERSION="v$(node -p "require('./package.json').version")"
           cd dist-binaries
           gh release upload "$VERSION" wavespeed-* SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
+
+  # Opens a version-bump PR against microsoft/winget-pkgs after each release.
+  # Off until the repository variable WINGET_AUTOUPDATE is "true": the first
+  # version must already be merged in winget-pkgs, and the secret WINGET_PAT
+  # (a classic personal access token with public_repo scope) must exist.
+  winget:
+    needs: release-binaries
+    if: ${{ vars.WINGET_AUTOUPDATE == 'true' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Submit the new version to winget-pkgs
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_PAT }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $url = "https://github.com/WaveSpeedAI/wavespeed-cli/releases/download/v$version/wavespeed-windows-x64.exe"
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          ./wingetcreate.exe update WaveSpeedAI.WaveSpeed `
+            --version $version `
+            --urls $url `
+            --release-notes-url "https://github.com/WaveSpeedAI/wavespeed-cli/releases/tag/v$version" `
+            --submit --token $env:WINGET_TOKEN
