@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyCodexToml, applyHermesYaml, applyJson, applyYamlScalars, claudeEdits, miniAgentValues, openclawEdits, opencodeEdits, qwenEdits, revertCodexToml, revertHermesYaml, revertJson, revertYamlScalars, validateModel,
+  aiderValues, applyCodexToml, applyContinueYaml, applyDshPatch, applyHermesYaml, applyJson, applyYamlScalars, claudeEdits, crushEdits, droidEdits, gooseProviderFile, goosePlainValues, miniAgentValues, openclawEdits, opencodeEdits, qwenEdits, revertCodexToml, revertContinueYaml, revertDshPatch, revertHermesYaml, revertJson, revertYamlScalars, validateModel,
 } from './setup-agents.js';
 
 describe('applyJson / revertJson', () => {
@@ -168,5 +168,102 @@ describe('mini-agent yaml scalars', () => {
     const user = 'api_key: "x"\nmax_steps: 20\n';
     const { text, previous } = applyYamlScalars(user, vals);
     expect(revertYamlScalars(text, JSON.parse(JSON.stringify(previous)))).toBe(user);
+  });
+});
+
+describe('crush / droid', () => {
+  it('crush adds the provider and both model slots, and reverts', () => {
+    const original: any = { options: { disable_metrics: true }, providers: { other: { type: 'openai' } } };
+    const doc = structuredClone(original);
+    const { previous } = applyJson(doc, crushEdits('a/b'));
+    expect(doc.providers.wavespeed).toMatchObject({ type: 'openai-compat', base_url: 'https://llm.wavespeed.ai/v1', api_key: '$WAVESPEED_API_KEY' });
+    expect(doc.models.large).toEqual({ provider: 'wavespeed', model: 'a/b' });
+    revertJson(doc, previous);
+    expect(doc).toEqual(original);
+  });
+  it('droid replaces only its own customModels entry', () => {
+    const original: any = { customModels: [{ model: 'x', baseUrl: 'https://other/v1', provider: 'openai' }], other: 1 };
+    const doc = structuredClone(original);
+    const { previous } = applyJson(doc, droidEdits('a/b', doc));
+    expect(doc.sessionDefaultSettings.model).toBe('custom:a/b');
+    expect(doc.customModels).toHaveLength(2);
+    expect(doc.customModels[1]).toMatchObject({ model: 'a/b', baseUrl: 'https://llm.wavespeed.ai/v1', apiKey: '${WAVESPEED_API_KEY}', provider: 'generic-chat-completion-api' });
+    // the saved undo state must not contain the user's other entries
+    expect(JSON.stringify(previous)).not.toContain('https://other/v1');
+    const again = structuredClone(doc);
+    applyJson(again, droidEdits('c/d', again));
+    expect(again.customModels.map((e: any) => e.model)).toEqual(['x', 'c/d']);
+    expect(again.sessionDefaultSettings.model).toBe('custom:c/d');
+    revertJson(doc, previous);
+    expect(doc).toEqual(original);
+  });
+});
+
+describe('aider / goose values', () => {
+  it('aider prefixes the model for litellm and keeps the key in the file', () => {
+    expect(aiderValues('a/b', 'sk')).toEqual({ 'openai-api-base': 'https://llm.wavespeed.ai/v1', 'openai-api-key': 'sk', model: 'openai/a/b' });
+  });
+  it('goose provider file reads the key from the environment', () => {
+    const f = JSON.parse(gooseProviderFile('a/b'));
+    expect(f).toMatchObject({ name: 'wavespeed', engine: 'openai', api_key_env: 'WAVESPEED_API_KEY', base_url: 'https://llm.wavespeed.ai/v1/chat/completions' });
+    expect(f.models[0].name).toBe('a/b');
+    expect(goosePlainValues('a/b')).toEqual({ GOOSE_PROVIDER: 'wavespeed', GOOSE_MODEL: 'a/b' });
+  });
+});
+
+describe('continue yaml', () => {
+  const user = '# mine\nname: Mine\nversion: 1.0.0\nschema: v1\nmodels:\n  - name: Other\n    provider: anthropic\n    model: claude\n\nrules:\n  - be nice\n';
+  it('appends an entry, keeps everything else, and reverts byte-exact', () => {
+    const { text, previous } = applyContinueYaml(user, 'a/b');
+    expect(text).toContain('# mine');
+    expect(text).toContain('  - name: "WaveSpeed a/b"');
+    // ours is the first list entry, ahead of the user's own
+    expect(text.indexOf('WaveSpeed a/b')).toBeLessThan(text.indexOf('name: Other'));
+    expect(text).toContain('apiKey: "${{ secrets.WAVESPEED_API_KEY }}"');
+    expect(text).toContain('rules:\n  - be nice');
+    expect(revertContinueYaml(text, JSON.parse(JSON.stringify(previous)))).toBe(user);
+  });
+  it('replaces its own entry when run again', () => {
+    const one = applyContinueYaml(user, 'a/b');
+    const two = applyContinueYaml(one.text, 'c/d');
+    expect(two.text.match(/apiBase:/g)).toHaveLength(1);
+    expect(two.text).toContain('model: "c/d"');
+    expect(revertContinueYaml(two.text, two.previous)).toContain('name: Other');
+  });
+  it('creates a whole file and removes it again', () => {
+    const { text, previous } = applyContinueYaml('', 'a/b');
+    expect(text.startsWith('name: WaveSpeed\nversion: 1.0.0\nschema: v1\nmodels:\n')).toBe(true);
+    expect(revertContinueYaml(text, previous)).toBe('');
+  });
+  it('adds a models list to a file that has none', () => {
+    const base = 'name: X\nversion: 1.0.0\nschema: v1\n';
+    const { text, previous } = applyContinueYaml(base, 'a/b');
+    expect(revertContinueYaml(text, JSON.parse(JSON.stringify(previous)))).toBe(base);
+  });
+  it('refuses a flow-style list', () => {
+    expect(() => applyContinueYaml('models: []\n', 'a/b')).toThrow();
+  });
+});
+
+describe('dsh patch', () => {
+  it('writes the block into a missing or empty list and reverts to an empty list', () => {
+    const out = applyDshPatch('# header\n[]\n', 'a/b');
+    expect(out).toContain('- id: llm-pi-ai');
+    expect(out).toContain('apiKeyEnv: WAVESPEED_API_KEY');
+    expect(out).toContain('provider: wavespeed');
+    expect(out).not.toMatch(/^\[\]$/m);
+    expect(revertDshPatch(out)).toBe('# header\n[]\n');
+    expect(revertDshPatch(applyDshPatch('', 'a/b'))).toBe('[]\n');
+  });
+  it('appends after the user entries and keeps them', () => {
+    const user = '- id: other\n  config:\n    x: 1\n';
+    const out = applyDshPatch(user, 'a/b');
+    expect(out.startsWith(user)).toBe(true);
+    expect(revertDshPatch(out)).toBe(user);
+  });
+  it('is idempotent and refuses a hand-written patch of the same plugins', () => {
+    const once = applyDshPatch('[]\n', 'a/b');
+    expect(applyDshPatch(once, 'c/d').match(/- id: llm-pi-ai/g)).toHaveLength(1);
+    expect(() => applyDshPatch('- id: llm-pi-ai\n  config: {}\n', 'a/b')).toThrow();
   });
 });

@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,12 +11,13 @@ import { getApiKey, userConfig } from '../lib/config.js';
 import { clientAttributionHeaders } from '../lib/client-headers.js';
 import { emitJson, emitJsonError, info, setJsonMode } from '../lib/log.js';
 import {
-  DEFAULT_MODEL, KEY_ENV, LLM_BASE_URL, HermesPrevious, JsonPrevious,
-  applyCodexToml, applyHermesYaml, applyJson, applyYamlScalars, claudeEdits, miniAgentValues, openclawEdits, opencodeEdits, qwenEdits,
-  revertCodexToml, revertHermesYaml, revertJson, revertYamlScalars, validateModel,
+  DEFAULT_MODEL, KEY_ENV, LLM_BASE_URL, HermesPrevious, JsonPrevious, SeqPrevious,
+  aiderValues, applyCodexToml, applyContinueYaml, applyDshPatch, applyHermesYaml, applyJson, applyYamlScalars, claudeEdits, crushEdits, droidEdits,
+  gooseProviderFile, goosePlainValues, miniAgentValues, openclawEdits, opencodeEdits, qwenEdits,
+  revertCodexToml, revertContinueYaml, revertDshPatch, revertHermesYaml, revertJson, revertYamlScalars, validateModel,
 } from '../lib/setup-agents.js';
 
-type AgentId = 'claude' | 'codex' | 'opencode' | 'openclaw' | 'hermes' | 'cline' | 'qwen' | 'miniagent';
+type AgentId = 'claude' | 'codex' | 'opencode' | 'openclaw' | 'hermes' | 'cline' | 'qwen' | 'miniagent' | 'kilo' | 'droid' | 'crush' | 'aider' | 'continue' | 'goose' | 'dsh';
 
 interface Agent {
   id: AgentId;
@@ -23,23 +25,37 @@ interface Agent {
   file: string;
   command: string;
   /** json/json5: merged key by key; toml/yaml: edited as text; cline: delegated to `cline auth`. */
-  kind: 'json' | 'json5' | 'toml' | 'yaml' | 'yamlscalars' | 'cline';
+  kind: 'json' | 'json5' | 'toml' | 'yaml' | 'yamlscalars' | 'yamlseq' | 'goose' | 'dsh' | 'cline';
   /** The key ends up inside the config file (otherwise it is read from $WAVESPEED_API_KEY). */
   keyInFile: boolean;
 }
 
 const home = os.homedir();
+// Goose: ~/.config/goose on macOS and Linux, %APPDATA%\Block\goose\config on Windows (per its docs; Windows not tested here).
+const GOOSE_DIR = process.platform === 'win32' ? path.join(process.env.APPDATA ?? path.join(home, 'AppData', 'Roaming'), 'Block', 'goose', 'config') : path.join(home, '.config', 'goose');
+const GOOSE_PROVIDER_FILE = path.join(GOOSE_DIR, 'custom_providers', 'wavespeed.json');
 const AGENTS: Agent[] = [
-  { id: 'claude', name: 'Claude Code', file: path.join(home, '.claude', 'settings.json'), command: 'claude', kind: 'json', keyInFile: true },
   { id: 'codex', name: 'Codex', file: path.join(home, '.codex', 'config.toml'), command: 'codex', kind: 'toml', keyInFile: false },
+  { id: 'claude', name: 'Claude Code', file: path.join(home, '.claude', 'settings.json'), command: 'claude', kind: 'json', keyInFile: true },
   { id: 'opencode', name: 'OpenCode', file: path.join(home, '.config', 'opencode', 'opencode.json'), command: 'opencode', kind: 'json', keyInFile: false },
   { id: 'openclaw', name: 'OpenClaw', file: path.join(home, '.openclaw', 'openclaw.json'), command: 'openclaw', kind: 'json5', keyInFile: false },
   { id: 'hermes', name: 'Hermes', file: path.join(home, '.hermes', 'config.yaml'), command: 'hermes', kind: 'yaml', keyInFile: false },
+  { id: 'kilo', name: 'Kilo Code', file: path.join(home, '.config', 'kilo', 'kilo.json'), command: 'kilo', kind: 'json5', keyInFile: false },
   { id: 'qwen', name: 'Qwen Code', file: path.join(home, '.qwen', 'settings.json'), command: 'qwen', kind: 'json', keyInFile: false },
   { id: 'miniagent', name: 'Mini-Agent', file: path.join(home, '.mini-agent', 'config', 'config.yaml'), command: 'mini-agent', kind: 'yamlscalars', keyInFile: true },
+  { id: 'crush', name: 'Crush', file: path.join(home, '.config', 'crush', 'crush.json'), command: 'crush', kind: 'json', keyInFile: false },
+  { id: 'droid', name: 'Factory Droid', file: path.join(home, '.factory', 'settings.json'), command: 'droid', kind: 'json', keyInFile: false },
+  { id: 'aider', name: 'Aider', file: path.join(home, '.aider.conf.yml'), command: 'aider', kind: 'yamlscalars', keyInFile: true },
+  { id: 'continue', name: 'Continue CLI', file: path.join(home, '.continue', 'config.yaml'), command: 'cn', kind: 'yamlseq', keyInFile: false },
+  { id: 'goose', name: 'Goose', file: path.join(GOOSE_DIR, 'config.yaml'), command: 'goose', kind: 'goose', keyInFile: false },
+  { id: 'dsh', name: 'DeepSeek Harness', file: path.join(process.env.DSH_HOME || path.join(home, '.dsh'), 'cordis.patch.yml'), command: 'dsh', kind: 'dsh', keyInFile: false },
   // Cline's CLI keeps provider settings (including the key) in this file; we write it only through `cline auth`.
   { id: 'cline', name: 'Cline', file: path.join(home, '.cline', 'data', 'settings', 'providers.json'), command: 'cline', kind: 'cline', keyInFile: true },
+  // Cline's CLI keeps provider settings (including the key) in this file; we write it only through `cline auth`.
 ];
+
+
+const sha256 = (data: string | Buffer) => crypto.createHash('sha256').update(data).digest('hex');
 
 const shown = (p: string) => p.replace(home, '~');
 
@@ -83,10 +99,11 @@ function readJson(file: string, json5 = false): Record<string, unknown> {
   throw new Error(`${shown(file)} is not plain JSON (comments or trailing commas?). Edit it by hand using the snippet at https://wavespeed.ai/llm/agents`);
 }
 
-function writeFile(file: string, content: string, secret: boolean): void {
+/** `keepOriginalBackup`: setup already ran for this agent, so an existing .bak is the true original. */
+function writeFile(file: string, content: string, secret: boolean, keepOriginalBackup: boolean): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const bak = `${file}.wavespeed.bak`;
-  if (fs.existsSync(file) && !fs.existsSync(bak)) fs.copyFileSync(file, bak);
+  if (fs.existsSync(file) && (!keepOriginalBackup || !fs.existsSync(bak))) fs.copyFileSync(file, bak);
   fs.writeFileSync(file, content, secret ? { mode: 0o600 } : undefined);
   if (secret) fs.chmodSync(file, 0o600);
 }
@@ -100,7 +117,7 @@ function envHint(): string {
 export function registerSetup(program: Command): void {
   program
     .command('setup [agent]')
-    .description('Point a coding agent (claude, codex, opencode, openclaw, hermes, cline, qwen, miniagent) at the WaveSpeed LLM gateway')
+    .description('Point a coding agent (claude, codex, opencode, openclaw, hermes, cline, qwen, miniagent, kilo, droid, crush, aider, continue, goose, dsh) at the WaveSpeed LLM gateway')
     .option('--model <id>', `Model to use (default: ${DEFAULT_MODEL})`)
     .option('--dry-run', 'Show what would change without writing anything')
     .option('--undo', "Restore the agent's config to what it was before setup")
@@ -136,7 +153,27 @@ export function registerSetup(program: Command): void {
             delete rest[agent.id];
             userConfig.set('setup', rest);
           };
-          if (agent.kind === 'toml') {
+          if (state && agent.kind !== 'cline' && !fs.existsSync(state.file)) {
+            if (!opts.dryRun) forget();
+            info(chalk.yellow(`${shown(state.file)} is already gone; cleared the saved setup state.`));
+            return;
+          }
+          // Untouched since setup wrote it: put the original bytes back (or remove a file we created).
+          const exact =
+            !!state?.hash && agent.kind !== 'cline' && agent.kind !== 'goose' &&
+            fs.existsSync(state.file) && sha256(fs.readFileSync(state.file)) === state.hash;
+          if (exact && state) {
+            const bak = `${state.file}.wavespeed.bak`;
+            if (!opts.dryRun) {
+              if (state.existed === false) fs.rmSync(state.file, { force: true });
+              else if (fs.existsSync(bak)) {
+                fs.copyFileSync(bak, state.file);
+                fs.chmodSync(state.file, fs.statSync(bak).mode & 0o777);
+              }
+              fs.rmSync(bak, { force: true });
+              forget();
+            }
+          } else if (agent.kind === 'toml') {
             if (!fs.existsSync(agent.file)) return fail(`${shown(agent.file)} does not exist; nothing to undo`);
             const before = fs.readFileSync(agent.file, 'utf8');
             const after = revertCodexToml(before);
@@ -155,6 +192,30 @@ export function registerSetup(program: Command): void {
             const after = revertYamlScalars(fs.readFileSync(state.file, 'utf8'), state.previous as Record<string, string | null>);
             if (!opts.dryRun) {
               if (after.trim() === '') fs.rmSync(state.file, { force: true }); else fs.writeFileSync(state.file, after);
+              forget();
+            }
+          } else if (agent.kind === 'yamlseq') {
+            const after = revertContinueYaml(fs.readFileSync(state.file, 'utf8'), state.previous as SeqPrevious);
+            if (!opts.dryRun) {
+              if (after.trim() === '') fs.rmSync(state.file, { force: true }); else fs.writeFileSync(state.file, after);
+              forget();
+            }
+          } else if (agent.kind === 'dsh') {
+            const after = revertDshPatch(fs.readFileSync(state.file, 'utf8'));
+            if (!opts.dryRun) {
+              if (!(state.previous as { existed: boolean }).existed) fs.rmSync(state.file, { force: true }); else fs.writeFileSync(state.file, after);
+              forget();
+            }
+          } else if (agent.kind === 'goose') {
+            const prev = state.previous as { scalars: Record<string, string | null>; providerRaw: string | null };
+            const after = revertYamlScalars(fs.readFileSync(state.file, 'utf8'), prev.scalars);
+            if (!opts.dryRun) {
+              if (after.trim() === '') fs.rmSync(state.file, { force: true }); else fs.writeFileSync(state.file, after);
+              fs.rmSync(`${state.file}.wavespeed.bak`, { force: true });
+              if (prev.providerRaw !== null) fs.writeFileSync(GOOSE_PROVIDER_FILE, prev.providerRaw); else {
+                fs.rmSync(GOOSE_PROVIDER_FILE, { force: true });
+                try { fs.rmdirSync(path.dirname(GOOSE_PROVIDER_FILE)); } catch { /* not empty or already gone */ }
+              }
               forget();
             }
           } else if (agent.kind === 'yaml') {
@@ -193,15 +254,27 @@ export function registerSetup(program: Command): void {
           next = r.text;
           previous = r.previous;
         } else if (agent.kind === 'yamlscalars') {
-          const r = applyYamlScalars(fs.existsSync(agent.file) ? fs.readFileSync(agent.file, 'utf8') : '', miniAgentValues(model, apiKey));
+          const values = agent.id === 'aider' ? aiderValues(model, apiKey) : miniAgentValues(model, apiKey);
+          const r = applyYamlScalars(fs.existsSync(agent.file) ? fs.readFileSync(agent.file, 'utf8') : '', values);
           next = r.text;
           previous = r.previous;
+        } else if (agent.kind === 'yamlseq') {
+          const r = applyContinueYaml(fs.existsSync(agent.file) ? fs.readFileSync(agent.file, 'utf8') : '', model);
+          next = r.text;
+          previous = r.previous;
+        } else if (agent.kind === 'dsh') {
+          previous = { existed: fs.existsSync(agent.file) };
+          next = applyDshPatch(fs.existsSync(agent.file) ? fs.readFileSync(agent.file, 'utf8') : '', model);
+        } else if (agent.kind === 'goose') {
+          const r = applyYamlScalars(fs.existsSync(agent.file) ? fs.readFileSync(agent.file, 'utf8') : '', goosePlainValues(model));
+          next = r.text;
+          previous = { scalars: r.previous, providerRaw: fs.existsSync(GOOSE_PROVIDER_FILE) ? fs.readFileSync(GOOSE_PROVIDER_FILE, 'utf8') : null };
         } else if (agent.kind === 'cline') {
           previous = { existed: fs.existsSync(agent.file) };
           if (!onPath('cline')) throw new Error('Cline CLI not found. Install it with `npm i -g cline`. (The VS Code extension has no config file; set it up in its settings UI.)');
         } else {
           const base = readJson(agent.file, agent.kind === 'json5');
-          const edits = agent.id === 'claude' ? claudeEdits(model, apiKey) : agent.id === 'openclaw' ? openclawEdits(model, base) : agent.id === 'qwen' ? qwenEdits(model) : opencodeEdits(model);
+          const edits = agent.id === 'claude' ? claudeEdits(model, apiKey) : agent.id === 'openclaw' ? openclawEdits(model, base) : agent.id === 'qwen' ? qwenEdits(model) : agent.id === 'crush' ? crushEdits(model) : agent.id === 'droid' ? droidEdits(model, base) : opencodeEdits(model);
           const r = applyJson(base, edits);
           previous = r.previous;
           next = JSON.stringify(r.doc, null, 2) + '\n';
@@ -213,7 +286,7 @@ export function registerSetup(program: Command): void {
       const exists = fs.existsSync(agent.file);
       if (opts.dryRun) {
         if (opts.json) return emitJson({ agent: agent.id, model, file: agent.file, dry_run: true, will_create: !exists });
-        info(chalk.bold(`Would ${exists ? 'update' : 'create'} ${shown(agent.file)}`) + chalk.gray(` (model ${model}${agent.keyInFile ? '; your API key would be stored in this file' : ''})`));
+        info(chalk.bold(`Would ${exists ? 'update' : 'create'} ${shown(agent.file)}${agent.kind === 'goose' ? ` and ${shown(GOOSE_PROVIDER_FILE)}` : ''}`) + chalk.gray(` (model ${model}${agent.keyInFile ? '; your API key would be stored in this file' : ''})`));
         info(chalk.gray('Nothing written.'));
         return;
       }
@@ -232,10 +305,20 @@ export function registerSetup(program: Command): void {
         if (r.status !== 0) return fail(`cline auth failed: ${(r.stderr || r.error?.message || '').trim().slice(0, 300)}`);
       } else {
         const hadComments = agent.kind === 'json5' && exists && /^\s*\/\/|\/\*/m.test(fs.readFileSync(agent.file, 'utf8'));
-        writeFile(agent.file, next, agent.keyInFile);
+        writeFile(agent.file, next, agent.keyInFile, !!userConfig.get('setup')?.[agent.id]);
+        if (agent.kind === 'goose') {
+          fs.mkdirSync(path.dirname(GOOSE_PROVIDER_FILE), { recursive: true });
+          fs.writeFileSync(GOOSE_PROVIDER_FILE, gooseProviderFile(model));
+        }
         if (hadComments) info(chalk.yellow(`Comments in ${shown(agent.file)} were not kept; the original is saved as ${shown(agent.file)}.wavespeed.bak`));
       }
-      if (agent.kind !== 'toml') userConfig.set('setup', { ...(userConfig.get('setup') ?? {}), [agent.id]: { file: agent.file, previous } });
+      {
+        const prior = userConfig.get('setup')?.[agent.id];
+        const record = { file: agent.file, previous, hash: agent.kind === 'cline' ? undefined : sha256(next), existed: prior ? prior.existed : exists };
+        // Re-running setup on an already configured agent keeps the first run's undo data.
+        const keep = prior && agent.kind !== 'toml' && agent.kind !== 'cline' ? { ...record, previous: prior.previous } : record;
+        userConfig.set('setup', { ...(userConfig.get('setup') ?? {}), [agent.id]: keep });
+      }
 
       const check = opts.check ? await selfCheck(apiKey, model) : null;
       if (opts.json) {
@@ -243,7 +326,7 @@ export function registerSetup(program: Command): void {
         if (check && !check.ok) process.exit(1);
         return;
       }
-      info(chalk.green(`Updated ${shown(agent.file)}`) + chalk.gray(` (model ${model})`));
+      info(chalk.green(`${exists ? 'Updated' : 'Created'} ${shown(agent.file)}`) + chalk.gray(` (model ${model})`));
       if (check) info(check.ok ? chalk.green(`Verified: streamed reply from ${model} (${check.detail}).`) : chalk.red(`Check failed: ${check.detail}`));
       if (!agent.keyInFile) {
         info(`\nThe key is read from ${chalk.bold(KEY_ENV)}; set it in the shell that launches ${agent.command}:\n  ${chalk.cyan(envHint())}\n  Keys: https://wavespeed.ai/accesskey`);

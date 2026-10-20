@@ -37,13 +37,18 @@ function isObj(v: unknown): v is Obj {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+/** Objects and arrays can both hold a path segment (array elements are addressed by index). */
+function isContainer(v: unknown): v is Obj {
+  return typeof v === 'object' && v !== null;
+}
+
 /** Set each path, remembering what was there so `revertJson` can put it back. */
 export function applyJson(doc: Obj, edits: JsonEdit[]): { doc: Obj; previous: JsonPrevious[] } {
   const previous: JsonPrevious[] = [];
   for (const { path, value } of edits) {
     let cur = doc;
     for (const key of path.slice(0, -1)) {
-      if (!isObj(cur[key])) cur[key] = {};
+      if (!isContainer(cur[key])) cur[key] = {};
       cur = cur[key] as Obj;
     }
     const last = path[path.length - 1];
@@ -59,14 +64,15 @@ export function revertJson(doc: Obj, previous: JsonPrevious[]): Obj {
     const parents: Obj[] = [doc];
     let cur: unknown = doc;
     for (const key of path.slice(0, -1)) {
-      cur = isObj(cur) ? cur[key] : undefined;
-      if (!isObj(cur)) break;
-      parents.push(cur);
+      cur = isContainer(cur) ? (cur as Obj)[key] : undefined;
+      if (!isContainer(cur)) break;
+      parents.push(cur as Obj);
     }
     if (parents.length !== path.length) continue; // structure changed since setup; leave it
     const holder = parents[parents.length - 1];
     const last = path[path.length - 1];
     if (existed) holder[last] = value;
+    else if (Array.isArray(holder)) holder.splice(Number(last), 1);
     else delete holder[last];
     // Drop containers we created and that are now empty.
     for (let i = parents.length - 1; i > 0; i--) {
@@ -135,6 +141,82 @@ export function qwenEdits(model: string): JsonEdit[] {
     { path: ['security', 'auth', 'selectedType'], value: 'openai' },
     { path: ['model', 'name'], value: m },
   ];
+}
+
+export function crushEdits(model: string): JsonEdit[] {
+  const m = validateModel(model);
+  const sel = { provider: 'wavespeed', model: m };
+  return [
+    {
+      path: ['providers', 'wavespeed'],
+      value: {
+        name: 'WaveSpeed',
+        type: 'openai-compat',
+        base_url: LLM_BASE_URL,
+        api_key: `$${KEY_ENV}`,
+        models: [{ id: m, name: m, context_window: 128000, default_max_tokens: 16000 }],
+      },
+    },
+    { path: ['models', 'large'], value: sel },
+    { path: ['models', 'small'], value: { ...sel } },
+  ];
+}
+
+/**
+ * Factory Droid keeps custom models in one array that also holds the user's other
+ * providers (and their keys): touch only our own element so the saved undo state
+ * never copies anyone else's entry.
+ */
+export function droidEdits(model: string, doc: Obj): JsonEdit[] {
+  const m = validateModel(model);
+  const existing = Array.isArray(doc.customModels) ? (doc.customModels as unknown[]) : [];
+  const at = existing.findIndex((e) => isObj(e) && e.baseUrl === LLM_BASE_URL);
+  const ours = {
+    model: m,
+    displayName: `WaveSpeed ${m}`,
+    baseUrl: LLM_BASE_URL,
+    apiKey: `\${${KEY_ENV}}`,
+    provider: 'generic-chat-completion-api',
+    maxOutputTokens: 16000,
+  };
+  return [
+    { path: ['customModels', String(at >= 0 ? at : existing.length)], value: ours },
+    // Without a default, `droid exec` asks for a Factory login unless -m custom:<model> is given.
+    { path: ['sessionDefaultSettings', 'model'], value: `custom:${m}` },
+  ];
+}
+
+// ---------- Goose (custom provider file + two scalars in config.yaml) ----------
+
+export function goosePlainValues(model: string): Record<string, string> {
+  return { GOOSE_PROVIDER: 'wavespeed', GOOSE_MODEL: validateModel(model) };
+}
+
+export function gooseProviderFile(model: string): string {
+  const m = validateModel(model);
+  return (
+    JSON.stringify(
+      {
+        name: 'wavespeed',
+        engine: 'openai',
+        display_name: 'WaveSpeed',
+        description: 'WaveSpeed LLM gateway',
+        api_key_env: KEY_ENV,
+        base_url: `${LLM_BASE_URL}/chat/completions`,
+        models: [{ name: m, context_limit: 128000 }],
+        supports_streaming: true,
+      },
+      null,
+      2,
+    ) + '\n'
+  );
+}
+
+// ---------- Aider (flat YAML scalars; the key lives in the file) ----------
+
+export function aiderValues(model: string, apiKey: string): Record<string, string> {
+  // litellm needs the openai/ prefix to treat the gateway as a generic OpenAI-compatible endpoint.
+  return { 'openai-api-base': LLM_BASE_URL, 'openai-api-key': apiKey, model: `openai/${validateModel(model)}` };
 }
 
 // ---------- Mini-Agent (flat YAML scalars; the key lives in the file) ----------
@@ -346,6 +428,138 @@ export function revertHermesYaml(input: string, previous: HermesPrevious): strin
     }
   }
   return text;
+}
+
+// ---------- Continue (YAML models list, edited in place) ----------
+
+export interface SeqPrevious {
+  created: boolean; // the file did not exist
+  hadKey: boolean; // the list key existed
+  entryRaw?: string; // source text of a pre-existing entry with our name that we replaced
+}
+
+export function continueEntry(model: string, pad: string): string {
+  const m = validateModel(model);
+  return [
+    `${pad}- name: ${JSON.stringify(`WaveSpeed ${m}`)}`,
+    `${pad}  provider: openai`,
+    `${pad}  model: ${JSON.stringify(m)}`,
+    `${pad}  apiBase: ${LLM_BASE_URL}`,
+    `${pad}  apiKey: "\${{ secrets.${KEY_ENV} }}"`,
+    `${pad}  roles:`,
+    `${pad}    - chat`,
+    `${pad}  defaultCompletionOptions:`,
+    `${pad}    contextLength: 128000`,
+    `${pad}    maxTokens: 16000`,
+    '',
+  ].join('\n');
+}
+
+function isOurContinueEntry(it: any): boolean {
+  return typeof it?.get === 'function' && it.get('apiBase') === LLM_BASE_URL && it.get('provider') === 'openai';
+}
+
+export function applyContinueYaml(input: string, model: string): { text: string; previous: SeqPrevious } {
+  validateModel(model);
+  const created = input.trim() === '';
+  let text = input;
+  if (created) {
+    text = 'name: WaveSpeed\nversion: 1.0.0\nschema: v1\n';
+  } else if (!text.endsWith('\n')) {
+    text += '\n';
+  }
+  const doc = parseYaml(text);
+  const root = doc.contents as YNode | null;
+  const previous: SeqPrevious = { created, hadKey: false };
+  const list = root?.get?.('models', true) as YNode | undefined;
+  if (list === undefined || list === null) {
+    return { text: `${text}models:\n${continueEntry(model, '  ')}`, previous };
+  }
+  if (!list.items || list.flow === true) throw new Error('models: in config.yaml is not a block list; edit it by hand');
+  previous.hadKey = true;
+  const mine = list.items.find(isOurContinueEntry);
+  if (mine?.range) {
+    const { dash, pad } = dashPad(text, mine.range[0]);
+    const end = contentLineEnd(text, mine.range[1]);
+    previous.entryRaw = text.slice(lineStart(text, dash), end);
+    return { text: text.slice(0, lineStart(text, dash)) + continueEntry(model, pad) + text.slice(end), previous };
+  }
+  if (list.items.length === 0) throw new Error('models: in config.yaml is empty; edit it by hand');
+  // First in the list: Continue's CLI has no default-model key and uses the first chat-role entry.
+  const { dash, pad } = dashPad(text, list.items[0].range[0]);
+  const at = lineStart(text, dash);
+  return { text: text.slice(0, at) + continueEntry(model, pad) + text.slice(at), previous };
+}
+
+export function revertContinueYaml(input: string, previous: SeqPrevious): string {
+  let text = input;
+  const doc = parseYaml(text);
+  const list = (doc.contents as YNode | null)?.get?.('models', true) as YNode | undefined;
+  const mine = list?.items?.find(isOurContinueEntry);
+  if (mine?.range) {
+    const { dash } = dashPad(text, mine.range[0]);
+    const start = lineStart(text, dash);
+    text = text.slice(0, start) + (previous.entryRaw ?? '') + text.slice(contentLineEnd(text, mine.range[1]));
+  }
+  if (!previous.hadKey) {
+    const again = parseYaml(text);
+    const l2 = (again.contents as YNode | null)?.get?.('models', true) as YNode | undefined;
+    if (l2 && (l2.items === undefined || l2.items.length === 0)) text = text.replace(/^models:[ \t]*\n?/m, '');
+  }
+  if (previous.created && text.trim() === 'name: WaveSpeed\nversion: 1.0.0\nschema: v1') return '';
+  return text;
+}
+
+// ---------- DeepSeek Harness (user patch layer; a managed block in cordis.patch.yml) ----------
+
+const DSH_OPEN = '# >>> wavespeed (managed by `wavespeed setup`) >>>';
+const DSH_CLOSE = '# <<< wavespeed <<<';
+
+export function dshBlock(model: string): string {
+  const m = validateModel(model);
+  return [
+    DSH_OPEN,
+    '- id: llm-pi-ai',
+    '  config:',
+    '    providers:',
+    '      wavespeed:',
+    `        apiKeyEnv: ${KEY_ENV}`,
+    '        api: openai-completions',
+    `        baseURL: ${LLM_BASE_URL}`,
+    '        models:',
+    `          - id: ${m}`,
+    '- id: agent-default-model',
+    '  config:',
+    '    provider: wavespeed',
+    `    model: ${m}`,
+    DSH_CLOSE,
+    '',
+  ].join('\n');
+}
+
+export function revertDshPatch(text: string): string {
+  const out: string[] = [];
+  let skipping = false;
+  for (const line of text.split('\n')) {
+    if (line.trim() === DSH_OPEN) { skipping = true; continue; }
+    if (skipping) { if (line.trim() === DSH_CLOSE) skipping = false; continue; }
+    out.push(line);
+  }
+  const rest = out.join('\n').replace(/\n{3,}/g, '\n\n');
+  if (/^\s*-\s+id:/m.test(rest)) return rest.replace(/\n+$/, '\n');
+  // No entries left: dsh's own file is an empty list (plus any comments).
+  const noEmpty = rest.replace(/^\s*\[\]\s*$/m, '').replace(/\n+$/, '');
+  return (noEmpty ? noEmpty + '\n' : '') + '[]\n';
+}
+
+export function applyDshPatch(input: string, model: string): string {
+  const base = revertDshPatch(input);
+  if (/^\s*-\s+id:\s*(llm-pi-ai|agent-default-model)\b/m.test(base)) {
+    throw new Error('cordis.patch.yml already patches llm-pi-ai or agent-default-model; merge the WaveSpeed provider by hand');
+  }
+  const withoutEmpty = base.replace(/^\s*\[\]\s*$/m, '').replace(/\n{3,}/g, '\n\n');
+  const head = withoutEmpty.trim() === '' ? '' : withoutEmpty.replace(/\n*$/, '\n\n');
+  return head + dshBlock(model);
 }
 
 // ---------- Codex (TOML, edited as text so the user's comments survive) ----------
