@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
-import { fetchModels, LiveModel, modelLlmsTxtUrl } from '../lib/api.js';
+import { fetchModels, LiveModel, modelDocsUrl } from '../lib/api.js';
 
 interface SchemaProp {
   type?: string | string[];
@@ -126,7 +126,7 @@ export function registerSchema(program: Command): void {
           (model.base_price !== undefined ? chalk.gray('   base price: ') + chalk.green(`$${model.base_price}`) : ''),
       );
       console.log(chalk.gray('  page:  ') + chalk.cyan(`https://wavespeed.ai/models/${model.model_id}`));
-      console.log(chalk.gray('  llms:  ') + chalk.cyan(modelLlmsTxtUrl(model.model_id)));
+      console.log(chalk.gray('  docs:  ') + chalk.cyan(modelDocsUrl(model.model_id)));
       if (model.description) {
         console.log(wrap(model.description, '  '));
       }
