@@ -187,6 +187,11 @@ export async function fetchBalance(): Promise<{ balance: number }> {
   return apiGet<{ balance: number }>('/api/v3/balance');
 }
 
+// The model page's markdown summary for agents (inputs, endpoint, examples).
+export function modelLlmsTxtUrl(modelId: string): string {
+  return `https://wavespeed.ai/models/${modelId}/llms.txt`;
+}
+
 export interface ModelPrice {
   model_id: string;
   price: number;

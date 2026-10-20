@@ -1,8 +1,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
-import { fetchPricing, fetchModels } from '../lib/api.js';
-import { missingPriceVars, isFloorQuote } from '../lib/pricing-vars.js';
+import { fetchPricing, modelLlmsTxtUrl } from '../lib/api.js';
 import { parseInputs } from '../lib/inputs.js';
 import { resolveModelToken } from '../lib/config.js';
 import { collectLocalFiles, resolveLocalFiles } from '../lib/local-files.js';
@@ -75,23 +74,6 @@ export function registerPrice(program: Command): void {
       try {
         const data = await fetchPricing(resolved.model, inputs);
 
-        // /model/price evaluates the model's formula against whatever inputs we
-        // send and never complains about the ones we left out — a formula with
-        // every variable missing collapses to base_price. That is the floor of
-        // the model's range, not a representative charge, so name the inputs
-        // this quote could not see rather than presenting the floor as "the"
-        // price. Catalog is cached 1h; a lookup failure only costs the detail.
-        let unpriced: string[] = [];
-        let atFloor = false;
-        try {
-          const { models } = await fetchModels();
-          const meta = models.find((m) => m.model_id === resolved.model);
-          const props = meta?.api_schema?.api_schemas?.[0]?.request_schema?.properties;
-          unpriced = missingPriceVars(meta?.formula, inputs, props);
-          atFloor = isFloorQuote(meta?.formula, inputs);
-        } catch {
-          /* no catalog — fall back to the generic disclaimer below */
-        }
         spinner?.stop();
 
         const disclaimer =
@@ -103,9 +85,8 @@ export function registerPrice(program: Command): void {
               {
                 ...data,
                 estimate: true,
-                unpriced_inputs: unpriced,
-                at_base_price: atFloor,
                 disclaimer,
+                llms_txt: modelLlmsTxtUrl(resolved.model),
                 uploaded: uploadedUrls,
               },
               null,
@@ -125,29 +106,6 @@ export function registerPrice(program: Command): void {
             ? chalk.gray(`  (list $${data.price})`)
             : ''),
         );
-        if (unpriced.length > 0) {
-          console.log(
-            '  ' +
-              chalk.yellow('note:    ') +
-              chalk.yellow(
-                `this model is priced from ${unpriced.join(', ')}, which ${unpriced.length === 1 ? 'was' : 'were'} not supplied.`,
-              ),
-          );
-          console.log(
-            '           ' +
-              chalk.gray(
-                atFloor
-                  ? 'The figure above is the base price — the floor of this model’s range, not a typical run.'
-                  : 'The figure above prices the rest at their defaults and can move once these are set.',
-              ),
-          );
-          console.log(
-            '           ' +
-              chalk.gray('Pass ') +
-              chalk.cyan(unpriced.map((v) => `-i ${v}=…`).join(' ')) +
-              chalk.gray(' for a representative quote.'),
-          );
-        }
         console.log();
         for (const [file, url] of Object.entries(uploadedUrls)) {
           console.log('  ' + chalk.gray('uploaded: ') + chalk.gray(file + ' → ') + chalk.cyan(url));
@@ -157,6 +115,7 @@ export function registerPrice(program: Command): void {
         }
         console.log();
         console.log(chalk.gray('Run it: ') + chalk.cyan(`wavespeed run ${modelArg}` + (opts.prompt ? ` -p "${opts.prompt}"` : '')));
+        console.log(chalk.gray('Model inputs:  ') + chalk.cyan(modelLlmsTxtUrl(resolved.model)));
         console.log(chalk.gray(disclaimer));
         console.log();
       } catch (err: any) {
