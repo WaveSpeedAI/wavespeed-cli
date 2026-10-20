@@ -6,3 +6,4 @@ dist
 .env.local
 wavespeed-output/
 .wavespeed/
+build/

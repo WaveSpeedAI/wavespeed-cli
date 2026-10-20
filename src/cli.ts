@@ -1,9 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import chalk from 'chalk';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { printBanner } from './lib/banner.js';
 import { registerAuth } from './commands/auth.js';
 import { registerRun } from './commands/run.js';
@@ -23,16 +20,9 @@ import { registerDelete } from './commands/delete.js';
 import { registerOpen } from './commands/open.js';
 import { registerBillings } from './commands/billings.js';
 import { registerUsage } from './commands/usage.js';
+import { registerUpgrade } from './commands/upgrade.js';
+import { VERSION } from './lib/version.js';
 import { detectRunHelp, printDynamicRunHelp } from './lib/dynamic-help.js';
-
-// Read version from package.json at runtime so a bump in package.json is
-// reflected automatically (no second place to keep in sync).
-const VERSION: string = (() => {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  // dist/cli.js → ../package.json (one level up because files: ["dist", ...])
-  const pkgPath = path.resolve(here, '..', 'package.json');
-  return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version as string;
-})();
 
 const program = new Command();
 program
@@ -79,6 +69,7 @@ registerBillings(program);
 registerUsage(program);
 registerInit(program);
 registerSkill(program);
+registerUpgrade(program);
 
 program
   .command('hello', { hidden: true })

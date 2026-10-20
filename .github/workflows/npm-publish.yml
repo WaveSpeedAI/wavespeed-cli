@@ -46,3 +46,69 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "$VERSION" \
             --generate-notes
+
+  # Standalone executables for people without Node/npm. Attached to the release
+  # the publish job just created; `wavespeed upgrade` and install.sh/install.ps1
+  # download them from there and verify SHA256SUMS.
+  binaries:
+    needs: publish
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, asset: wavespeed-linux-x64 }
+          - { os: ubuntu-24.04-arm, asset: wavespeed-linux-arm64 }
+          - { os: macos-15, asset: wavespeed-darwin-arm64 }
+          - { os: macos-15-intel, asset: wavespeed-darwin-x64 }
+          - { os: windows-latest, asset: wavespeed-windows-x64.exe }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - run: npm ci
+      - run: node scripts/build-binary.mjs build/${{ matrix.asset }}
+      - name: Smoke test
+        shell: bash
+        run: ./build/${{ matrix.asset }} --version
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.asset }}
+          path: build/${{ matrix.asset }}
+
+  release-binaries:
+    needs: binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write      # build provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: dist-binaries
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          cd dist-binaries
+          sha256sum wavespeed-* > SHA256SUMS
+          cat SHA256SUMS
+      # Verify later with: gh attestation verify <file> --repo WaveSpeedAI/wavespeed-cli
+      - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: |
+            dist-binaries/wavespeed-*
+            dist-binaries/SHA256SUMS
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="v$(node -p "require('./package.json').version")"
+          cd dist-binaries
+          gh release upload "$VERSION" wavespeed-* SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"

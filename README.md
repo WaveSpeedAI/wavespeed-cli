@@ -42,6 +42,10 @@ npm install -g @wavespeed/cli
 # friendlier error path)
 curl -fsSL https://raw.githubusercontent.com/WaveSpeedAI/wavespeed-cli/main/install.sh | bash
 
+# no Node.js/npm? install.sh falls back to a standalone executable on macOS/Linux;
+# on Windows (PowerShell):
+irm https://raw.githubusercontent.com/WaveSpeedAI/wavespeed-cli/main/install.ps1 | iex
+
 # sign in (opens the access-key page, paste to confirm)
 wavespeed login
 ```
@@ -136,6 +140,7 @@ wavespeed login                          Browser + paste-key wizard (clipboard-a
 wavespeed logout                         Clear stored API key
 wavespeed status                         Show masked key, base URL, useful links
 wavespeed config [--default-model …]     View / update CLI defaults
+wavespeed upgrade [--check] [--json]     Upgrade to the latest version (--check only reports)
 
 # generation
 wavespeed run [model|alias] -p "…"       Run any model or alias (uses defaultModel if omitted)

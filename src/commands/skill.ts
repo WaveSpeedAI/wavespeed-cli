@@ -4,6 +4,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Injected by scripts/build-binary.mjs (the standalone executable has no skills/ directory).
+declare const __WS_SKILL__: string | undefined;
+
+function skillBody(): string {
+  if (typeof __WS_SKILL__ === 'string') return __WS_SKILL__;
+  return fs.readFileSync(skillSourcePath(), 'utf8');
+}
+
 function skillSourcePath(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
   // dist/commands/skill.js -> ../../skills/SKILL.md
@@ -20,7 +28,7 @@ export function writeSkills(cwd: string = process.cwd()): string[] {
   return SKILL_ROOTS.map((root) => {
     const dest = path.join(cwd, root, 'skills', 'wavespeed', 'SKILL.md');
     fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.copyFileSync(skillSourcePath(), dest);
+    fs.writeFileSync(dest, skillBody());
     return dest;
   });
 }
@@ -41,7 +49,7 @@ export function registerSkill(program: Command): void {
     .option('--print', 'Print the skill body to stdout instead of writing a file')
     .action((opts: { print?: boolean }) => {
       if (opts.print) {
-        process.stdout.write(fs.readFileSync(skillSourcePath(), 'utf8'));
+        process.stdout.write(skillBody());
         return;
       }
       const dests = writeSkills();
