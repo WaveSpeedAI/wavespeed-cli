@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
-import { fetchPricing, modelDocsUrl } from '../lib/api.js';
+import { fetchPricing, modelPlaygroundUrl } from '../lib/api.js';
 import { parseInputs } from '../lib/inputs.js';
 import { resolveModelToken } from '../lib/config.js';
 import { collectLocalFiles, resolveLocalFiles } from '../lib/local-files.js';
@@ -86,7 +86,7 @@ export function registerPrice(program: Command): void {
                 ...data,
                 estimate: true,
                 disclaimer,
-                docs_url: modelDocsUrl(resolved.model),
+                playground_url: modelPlaygroundUrl(resolved.model),
                 uploaded: uploadedUrls,
               },
               null,
@@ -115,7 +115,7 @@ export function registerPrice(program: Command): void {
         }
         console.log();
         console.log(chalk.gray('Run it: ') + chalk.cyan(`wavespeed run ${modelArg}` + (opts.prompt ? ` -p "${opts.prompt}"` : '')));
-        console.log(chalk.gray('Model docs:    ') + chalk.cyan(modelDocsUrl(resolved.model)));
+        console.log(chalk.gray('Playground:    ') + chalk.cyan(modelPlaygroundUrl(resolved.model)));
         console.log(chalk.gray(disclaimer));
         console.log();
       } catch (err: any) {
