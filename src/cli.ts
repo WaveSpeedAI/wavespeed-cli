@@ -21,6 +21,7 @@ import { registerOpen } from './commands/open.js';
 import { registerBillings } from './commands/billings.js';
 import { registerUsage } from './commands/usage.js';
 import { registerUpgrade } from './commands/upgrade.js';
+import { registerSetup } from './commands/setup.js';
 import { VERSION } from './lib/version.js';
 import { detectRunHelp, printDynamicRunHelp } from './lib/dynamic-help.js';
 
@@ -70,6 +71,7 @@ registerUsage(program);
 registerInit(program);
 registerSkill(program);
 registerUpgrade(program);
+registerSetup(program);
 
 program
   .command('hello', { hidden: true })

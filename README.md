@@ -141,6 +141,7 @@ wavespeed logout                         Clear stored API key
 wavespeed status                         Show masked key, base URL, useful links
 wavespeed config [--default-model …]     View / update CLI defaults
 wavespeed upgrade [--check] [--json]     Upgrade to the latest version (--check only reports)
+wavespeed setup [claude|codex|opencode]  Point a coding agent at the WaveSpeed LLM gateway (--dry-run, --undo, --model)
 
 # generation
 wavespeed run [model|alias] -p "…"       Run any model or alias (uses defaultModel if omitted)

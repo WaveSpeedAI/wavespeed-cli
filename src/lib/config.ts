@@ -14,6 +14,8 @@ export interface UserConfig {
   defaultModel?: string;
   outputDir?: string;
   aliases?: Record<string, ModelAlias>;
+  /** `wavespeed setup`: what each agent's config held before we edited it, for --undo. */
+  setup?: Record<string, { file: string; previous: unknown[] }>;
 }
 
 export const DEFAULTS = {

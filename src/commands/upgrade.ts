@@ -31,6 +31,11 @@ async function download(url: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
 
+// process.execPath may be a symlink (e.g. /usr/local/bin/wavespeed -> Cellar/...); act on the real file.
+function realExecPath(): string {
+  try { return fs.realpathSync(process.execPath); } catch { return process.execPath; }
+}
+
 /** Replace the running executable with the release asset, after checking its SHA-256. */
 async function replaceExecutable(version: string): Promise<void> {
   const asset = assetName();
@@ -44,7 +49,7 @@ async function replaceExecutable(version: string): Promise<void> {
   const actual = crypto.createHash('sha256').update(bin).digest('hex');
   if (!expected || expected.toLowerCase() !== actual) throw new Error(`checksum mismatch for ${asset}; not installing`);
 
-  const exe = process.execPath;
+  const exe = realExecPath();
   const next = `${exe}.new`;
   fs.writeFileSync(next, bin, { mode: 0o755 });
   if (process.platform === 'win32') {
@@ -159,14 +164,14 @@ export function registerUpgrade(program: Command): void {
       info(chalk.gray(`Upgrading v${VERSION} → v${latest}…`));
       if (IS_STANDALONE) {
         // Installed by a package manager: let it own the upgrade.
-        const managed = /[\\/](Cellar|homebrew|Homebrew|WinGet|scoop)[\\/]/.exec(process.execPath);
+        const managed = /[\\/](Cellar|homebrew|Homebrew|WinGet|scoop)[\\/]/.exec(realExecPath());
         if (managed) {
           return fail(`This copy is managed by ${managed[1]}; upgrade it with your package manager (e.g. brew upgrade wavespeed).`);
         }
         try {
           await replaceExecutable(latest);
         } catch (err: any) {
-          return fail(`Could not replace ${process.execPath}: ${err.message ?? String(err)}`);
+          return fail(`Could not replace ${realExecPath()}: ${err.message ?? String(err)}`);
         }
       } else {
         let code: number;
