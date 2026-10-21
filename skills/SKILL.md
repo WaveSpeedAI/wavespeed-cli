@@ -58,17 +58,6 @@ URL=$(wavespeed upload ./hero.jpg --json | jq -r .url)
 wavespeed run ... -p "..." --download "./out/{index}.{ext}"
 ```
 
-## Cost questions
-
-Just run what the user asked for; there is no need to price it first. Only when the user asks what something will cost, or sets a budget, get an estimate. It generates nothing and is not charged:
-
-```bash
-wavespeed price wavespeed-ai/minimax-h3/text-to-video -p "…" -i duration=5 --json   # {price, discounted_price, currency, estimate}
-wavespeed balance --json                                                            # remaining credit
-```
-
-The estimate is for reference; the amount actually charged for the run is authoritative.
-
 ## Project config and aliases
 
 If `wavespeed.json` exists (created by `wavespeed init`):
@@ -88,5 +77,5 @@ The CLI never modifies the user's prompt or inputs. The single exception is expl
 - Don't invent model IDs. Always confirm via `wavespeed models` or `wavespeed schema <id>` before running.
 - Use `--json` on every `run` so you can read `outputs[0]` programmatically.
 - `wavespeed delete` requires `--yes` when run non-interactively (that includes you).
-- Spend questions: `wavespeed usage` (totals, per-model) and `wavespeed billings` (per-charge records).
+- Cost and spend: `wavespeed price <id> -i k=v --json` estimates a run without generating or charging; `wavespeed balance` shows remaining credit; `wavespeed usage` (totals, per-model) and `wavespeed billings` (per-charge records) show what was spent.
 - A `run` that fails with a gateway or network error (502/503/504, connection reset, timeout) does NOT mean the task failed, and the submit request is never retried automatically, so re-running can create a duplicate paid task. Do not re-run immediately. If the error contains a task id (`task_id` / prediction id), keep checking it with `wavespeed show <id> --json` until its status is terminal (`completed`, `failed`, `cancelled`, `timeout`, `deleted`). If no id was returned, check recent predictions with `wavespeed history --json` (add `--model <id>`; default window is the last 24h) and re-run once only if none matches. A client-side wait timeout or an interrupted `run` does not mean the task failed: tasks can run for a long time, so do not give up after a fixed time.
