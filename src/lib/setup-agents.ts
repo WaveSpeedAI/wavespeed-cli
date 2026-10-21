@@ -618,3 +618,35 @@ export function applyCodexToml(text: string, model: string): string {
   const body = edited.join('\n').replace(/\n+$/, '');
   return [...top, body, ...tail].join('\n').replace(/\n{3,}/g, '\n\n');
 }
+
+// ---------- Gemini CLI (managed block in ~/.gemini/.env + two keys in settings.json) ----------
+
+const ENV_OPEN = '# >>> wavespeed (managed by `wavespeed setup`) >>>';
+const ENV_CLOSE = '# <<< wavespeed <<<';
+
+export function geminiEdits(model: string): JsonEdit[] {
+  const m = validateModel(model);
+  return [
+    { path: ['security', 'auth', 'selectedType'], value: 'gemini-api-key' },
+    { path: ['model', 'name'], value: m },
+  ];
+}
+
+export function revertGeminiEnv(text: string): string {
+  const out: string[] = [];
+  let skipping = false;
+  for (const line of text.split('\n')) {
+    if (line.trim() === ENV_OPEN) { skipping = true; continue; }
+    if (skipping) { if (line.trim() === ENV_CLOSE) skipping = false; continue; }
+    out.push(line);
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').replace(/\n+$/, '\n').replace(/^\n$/, '');
+}
+
+/** dotenv lets the last duplicate win, so the managed block goes at the end. */
+export function applyGeminiEnv(input: string, apiKey: string): string {
+  if (/[\r\n]/.test(apiKey)) throw new Error('API key contains a line break');
+  const base = revertGeminiEnv(input);
+  const head = base.trim() === '' ? '' : base.replace(/\n*$/, '\n\n');
+  return head + [ENV_OPEN, `GOOGLE_GEMINI_BASE_URL=${CLAUDE_BASE_URL}`, `GEMINI_API_KEY=${apiKey}`, ENV_CLOSE, ''].join('\n');
+}

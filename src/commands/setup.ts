@@ -12,12 +12,12 @@ import { clientAttributionHeaders } from '../lib/client-headers.js';
 import { emitJson, emitJsonError, info, setJsonMode } from '../lib/log.js';
 import {
   DEFAULT_MODEL, KEY_ENV, LLM_BASE_URL, HermesPrevious, JsonPrevious, SeqPrevious,
-  aiderValues, applyCodexToml, applyContinueYaml, applyDshPatch, applyHermesYaml, applyJson, applyYamlScalars, claudeEdits, crushEdits, droidEdits,
+  aiderValues, applyCodexToml, applyContinueYaml, applyDshPatch, applyHermesYaml, applyGeminiEnv, applyJson, applyYamlScalars, claudeEdits, crushEdits, droidEdits, geminiEdits,
   gooseProviderFile, goosePlainValues, miniAgentValues, openclawEdits, opencodeEdits, qwenEdits,
-  revertCodexToml, revertContinueYaml, revertDshPatch, revertHermesYaml, revertJson, revertYamlScalars, validateModel,
+  revertCodexToml, revertContinueYaml, revertDshPatch, revertGeminiEnv, revertHermesYaml, revertJson, revertYamlScalars, validateModel,
 } from '../lib/setup-agents.js';
 
-type AgentId = 'claude' | 'codex' | 'opencode' | 'openclaw' | 'hermes' | 'cline' | 'qwen' | 'miniagent' | 'kilo' | 'droid' | 'crush' | 'aider' | 'continue' | 'goose' | 'dsh';
+type AgentId = 'claude' | 'codex' | 'opencode' | 'openclaw' | 'hermes' | 'cline' | 'qwen' | 'miniagent' | 'kilo' | 'droid' | 'crush' | 'aider' | 'continue' | 'goose' | 'dsh' | 'gemini';
 
 interface Agent {
   id: AgentId;
@@ -25,7 +25,7 @@ interface Agent {
   file: string;
   command: string;
   /** json/json5: merged key by key; toml/yaml: edited as text; cline: delegated to `cline auth`. */
-  kind: 'json' | 'json5' | 'toml' | 'yaml' | 'yamlscalars' | 'yamlseq' | 'goose' | 'dsh' | 'cline';
+  kind: 'json' | 'json5' | 'toml' | 'yaml' | 'yamlscalars' | 'yamlseq' | 'goose' | 'dsh' | 'gemini' | 'cline';
   /** The key ends up inside the config file (otherwise it is read from $WAVESPEED_API_KEY). */
   keyInFile: boolean;
 }
@@ -33,6 +33,7 @@ interface Agent {
 const home = os.homedir();
 // Goose: ~/.config/goose on macOS and Linux, %APPDATA%\Block\goose\config on Windows (per its docs; Windows not tested here).
 const GOOSE_DIR = process.platform === 'win32' ? path.join(process.env.APPDATA ?? path.join(home, 'AppData', 'Roaming'), 'Block', 'goose', 'config') : path.join(home, '.config', 'goose');
+const GEMINI_SETTINGS_FILE = path.join(home, '.gemini', 'settings.json');
 const GOOSE_PROVIDER_FILE = path.join(GOOSE_DIR, 'custom_providers', 'wavespeed.json');
 const AGENTS: Agent[] = [
   { id: 'codex', name: 'Codex', file: path.join(home, '.codex', 'config.toml'), command: 'codex', kind: 'toml', keyInFile: false },
@@ -49,6 +50,8 @@ const AGENTS: Agent[] = [
   { id: 'continue', name: 'Continue CLI', file: path.join(home, '.continue', 'config.yaml'), command: 'cn', kind: 'yamlseq', keyInFile: false },
   { id: 'goose', name: 'Goose', file: path.join(GOOSE_DIR, 'config.yaml'), command: 'goose', kind: 'goose', keyInFile: false },
   { id: 'dsh', name: 'DeepSeek Harness', file: path.join(process.env.DSH_HOME || path.join(home, '.dsh'), 'cordis.patch.yml'), command: 'dsh', kind: 'dsh', keyInFile: false },
+  // Gemini CLI reads the base URL and key from ~/.gemini/.env (trusted folders only); the model and auth type live in settings.json.
+  { id: 'gemini', name: 'Gemini CLI', file: path.join(home, '.gemini', '.env'), command: 'gemini', kind: 'gemini', keyInFile: true },
   // Cline's CLI keeps provider settings (including the key) in this file; we write it only through `cline auth`.
   { id: 'cline', name: 'Cline', file: path.join(home, '.cline', 'data', 'settings', 'providers.json'), command: 'cline', kind: 'cline', keyInFile: true },
   // Cline's CLI keeps provider settings (including the key) in this file; we write it only through `cline auth`.
@@ -117,7 +120,7 @@ function envHint(): string {
 export function registerSetup(program: Command): void {
   program
     .command('setup [agent]')
-    .description('Point a coding agent (claude, codex, opencode, openclaw, hermes, cline, qwen, miniagent, kilo, droid, crush, aider, continue, goose, dsh) at the WaveSpeed LLM gateway')
+    .description('Point a coding agent (claude, codex, opencode, openclaw, hermes, cline, qwen, miniagent, kilo, droid, crush, aider, continue, goose, dsh, gemini) at the WaveSpeed LLM gateway')
     .option('--model <id>', `Model to use (default: ${DEFAULT_MODEL})`)
     .option('--dry-run', 'Show what would change without writing anything')
     .option('--undo', "Restore the agent's config to what it was before setup")
@@ -160,7 +163,7 @@ export function registerSetup(program: Command): void {
           }
           // Untouched since setup wrote it: put the original bytes back (or remove a file we created).
           const exact =
-            !!state?.hash && agent.kind !== 'cline' && agent.kind !== 'goose' &&
+            !!state?.hash && agent.kind !== 'cline' && agent.kind !== 'goose' && agent.kind !== 'gemini' &&
             fs.existsSync(state.file) && sha256(fs.readFileSync(state.file)) === state.hash;
           if (exact && state) {
             const bak = `${state.file}.wavespeed.bak`;
@@ -206,6 +209,20 @@ export function registerSetup(program: Command): void {
               if (!(state.previous as { existed: boolean }).existed) fs.rmSync(state.file, { force: true }); else fs.writeFileSync(state.file, after);
               forget();
             }
+          } else if (agent.kind === 'gemini') {
+            const prev = state.previous as { settings: JsonPrevious[]; settingsExisted: boolean };
+            const envAfter = revertGeminiEnv(fs.readFileSync(state.file, 'utf8'));
+            if (!opts.dryRun) {
+              if (envAfter.trim() === '' && !state.existed) fs.rmSync(state.file, { force: true }); else fs.writeFileSync(state.file, envAfter);
+              fs.rmSync(`${state.file}.wavespeed.bak`, { force: true });
+              if (fs.existsSync(GEMINI_SETTINGS_FILE)) {
+                const doc = revertJson(readJson(GEMINI_SETTINGS_FILE, false), prev.settings);
+                if (!prev.settingsExisted && Object.keys(doc).length === 0) fs.rmSync(GEMINI_SETTINGS_FILE, { force: true });
+                else fs.writeFileSync(GEMINI_SETTINGS_FILE, JSON.stringify(doc, null, 2) + '\n');
+              }
+              fs.rmSync(`${GEMINI_SETTINGS_FILE}.wavespeed.bak`, { force: true });
+              forget();
+            }
           } else if (agent.kind === 'goose') {
             const prev = state.previous as { scalars: Record<string, string | null>; providerRaw: string | null };
             const after = revertYamlScalars(fs.readFileSync(state.file, 'utf8'), prev.scalars);
@@ -246,6 +263,7 @@ export function registerSetup(program: Command): void {
 
       let next = '';
       let previous: unknown = [];
+      let geminiSettings = '';
       try {
         if (agent.kind === 'toml') {
           next = applyCodexToml(fs.existsSync(agent.file) ? fs.readFileSync(agent.file, 'utf8') : '', model);
@@ -269,6 +287,11 @@ export function registerSetup(program: Command): void {
           const r = applyYamlScalars(fs.existsSync(agent.file) ? fs.readFileSync(agent.file, 'utf8') : '', goosePlainValues(model));
           next = r.text;
           previous = { scalars: r.previous, providerRaw: fs.existsSync(GOOSE_PROVIDER_FILE) ? fs.readFileSync(GOOSE_PROVIDER_FILE, 'utf8') : null };
+        } else if (agent.kind === 'gemini') {
+          const r = applyJson(readJson(GEMINI_SETTINGS_FILE, false), geminiEdits(model));
+          geminiSettings = JSON.stringify(r.doc, null, 2) + '\n';
+          previous = { settings: r.previous, settingsExisted: fs.existsSync(GEMINI_SETTINGS_FILE) };
+          next = applyGeminiEnv(fs.existsSync(agent.file) ? fs.readFileSync(agent.file, 'utf8') : '', apiKey);
         } else if (agent.kind === 'cline') {
           previous = { existed: fs.existsSync(agent.file) };
           if (!onPath('cline')) throw new Error('Cline CLI not found. Install it with `npm i -g cline`. (The VS Code extension has no config file; set it up in its settings UI.)');
@@ -286,7 +309,7 @@ export function registerSetup(program: Command): void {
       const exists = fs.existsSync(agent.file);
       if (opts.dryRun) {
         if (opts.json) return emitJson({ agent: agent.id, model, file: agent.file, dry_run: true, will_create: !exists });
-        info(chalk.bold(`Would ${exists ? 'update' : 'create'} ${shown(agent.file)}${agent.kind === 'goose' ? ` and ${shown(GOOSE_PROVIDER_FILE)}` : ''}`) + chalk.gray(` (model ${model}${agent.keyInFile ? '; your API key would be stored in this file' : ''})`));
+        info(chalk.bold(`Would ${exists ? 'update' : 'create'} ${shown(agent.file)}${agent.kind === 'goose' ? ` and ${shown(GOOSE_PROVIDER_FILE)}` : agent.kind === 'gemini' ? ` and ${shown(GEMINI_SETTINGS_FILE)}` : ''}`) + chalk.gray(` (model ${model}${agent.keyInFile ? '; your API key would be stored in this file' : ''})`));
         info(chalk.gray('Nothing written.'));
         return;
       }
@@ -306,6 +329,11 @@ export function registerSetup(program: Command): void {
       } else {
         const hadComments = agent.kind === 'json5' && exists && /^\s*\/\/|\/\*/m.test(fs.readFileSync(agent.file, 'utf8'));
         writeFile(agent.file, next, agent.keyInFile, !!userConfig.get('setup')?.[agent.id]);
+        if (agent.kind === 'gemini') {
+          const bak = `${GEMINI_SETTINGS_FILE}.wavespeed.bak`;
+          if (fs.existsSync(GEMINI_SETTINGS_FILE) && !fs.existsSync(bak)) fs.copyFileSync(GEMINI_SETTINGS_FILE, bak);
+          fs.writeFileSync(GEMINI_SETTINGS_FILE, geminiSettings);
+        }
         if (agent.kind === 'goose') {
           fs.mkdirSync(path.dirname(GOOSE_PROVIDER_FILE), { recursive: true });
           fs.writeFileSync(GOOSE_PROVIDER_FILE, gooseProviderFile(model));
@@ -330,6 +358,9 @@ export function registerSetup(program: Command): void {
       if (check) info(check.ok ? chalk.green(`Verified: streamed reply from ${model} (${check.detail}).`) : chalk.red(`Check failed: ${check.detail}`));
       if (!agent.keyInFile) {
         info(`\nThe key is read from ${chalk.bold(KEY_ENV)}; set it in the shell that launches ${agent.command}:\n  ${chalk.cyan(envHint())}\n  Keys: https://wavespeed.ai/accesskey`);
+      }
+      if (agent.kind === 'gemini') {
+        info(chalk.yellow('\nGemini CLI reads ~/.gemini/.env only in folders it trusts: accept the trust prompt on first start, or set GEMINI_CLI_TRUST_WORKSPACE=true for scripts and CI.'));
       }
       info(`\nStart it with ${chalk.cyan(agent.command)}. Revert with ${chalk.cyan(`wavespeed setup ${agent.id} --undo`)}.`);
       if (check && !check.ok) process.exit(1);

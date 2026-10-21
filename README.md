@@ -141,7 +141,7 @@ wavespeed logout                         Clear stored API key
 wavespeed status                         Show masked key, base URL, useful links
 wavespeed config [--default-model …]     View / update CLI defaults
 wavespeed upgrade [--check] [--json]     Upgrade to the latest version (--check only reports)
-wavespeed setup [agent]                  Point claude, codex, opencode, openclaw, hermes, cline, qwen or miniagent at the WaveSpeed LLM gateway (--dry-run, --undo, --model)
+wavespeed setup [agent]                  Point a coding agent (claude, codex, gemini, opencode, openclaw, hermes, kilo, cline, qwen, droid, crush, aider, continue, goose, miniagent, dsh) at the WaveSpeed LLM gateway (--dry-run, --undo, --model)
 
 # generation
 wavespeed run [model|alias] -p "…"       Run any model or alias (uses defaultModel if omitted)

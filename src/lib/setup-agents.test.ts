@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  aiderValues, applyCodexToml, applyContinueYaml, applyDshPatch, applyHermesYaml, applyJson, applyYamlScalars, claudeEdits, crushEdits, droidEdits, gooseProviderFile, goosePlainValues, miniAgentValues, openclawEdits, opencodeEdits, qwenEdits, revertCodexToml, revertContinueYaml, revertDshPatch, revertHermesYaml, revertJson, revertYamlScalars, validateModel,
+  aiderValues, applyCodexToml, applyContinueYaml, applyDshPatch, applyGeminiEnv, revertGeminiEnv, geminiEdits, applyHermesYaml, applyJson, applyYamlScalars, claudeEdits, crushEdits, droidEdits, gooseProviderFile, goosePlainValues, miniAgentValues, openclawEdits, opencodeEdits, qwenEdits, revertCodexToml, revertContinueYaml, revertDshPatch, revertHermesYaml, revertJson, revertYamlScalars, validateModel,
 } from './setup-agents.js';
 
 describe('applyJson / revertJson', () => {
@@ -265,5 +265,28 @@ describe('dsh patch', () => {
     const once = applyDshPatch('[]\n', 'a/b');
     expect(applyDshPatch(once, 'c/d').match(/- id: llm-pi-ai/g)).toHaveLength(1);
     expect(() => applyDshPatch('- id: llm-pi-ai\n  config: {}\n', 'a/b')).toThrow();
+  });
+});
+
+describe('gemini', () => {
+  it('appends a managed env block and reverts to the original bytes', () => {
+    const user = '# mine\nFOO=bar\n';
+    const out = applyGeminiEnv(user, 'wsk_live_x');
+    expect(out.startsWith(user)).toBe(true);
+    expect(out).toContain('GOOGLE_GEMINI_BASE_URL=https://llm.wavespeed.ai\n');
+    expect(out).toContain('GEMINI_API_KEY=wsk_live_x\n');
+    expect(revertGeminiEnv(out)).toBe(user);
+    expect(revertGeminiEnv(applyGeminiEnv('', 'k'))).toBe('');
+  });
+  it('is idempotent and rejects a key with a line break', () => {
+    const once = applyGeminiEnv('A=1\n', 'k1');
+    expect(applyGeminiEnv(once, 'k2').match(/GEMINI_API_KEY=/g)).toHaveLength(1);
+    expect(() => applyGeminiEnv('', 'a\nb')).toThrow();
+  });
+  it('selects api-key auth and the model in settings.json', () => {
+    expect(geminiEdits('a/b')).toEqual([
+      { path: ['security', 'auth', 'selectedType'], value: 'gemini-api-key' },
+      { path: ['model', 'name'], value: 'a/b' },
+    ]);
   });
 });
