@@ -38,6 +38,8 @@ const GOOSE_PROVIDER_FILE = path.join(GOOSE_DIR, 'custom_providers', 'wavespeed.
 const AGENTS: Agent[] = [
   { id: 'codex', name: 'Codex', file: path.join(home, '.codex', 'config.toml'), command: 'codex', kind: 'toml', keyInFile: false },
   { id: 'claude', name: 'Claude Code', file: path.join(home, '.claude', 'settings.json'), command: 'claude', kind: 'json', keyInFile: true },
+  // Gemini CLI reads the base URL and key from ~/.gemini/.env (trusted folders only); the model and auth type live in settings.json.
+  { id: 'gemini', name: 'Gemini CLI', file: path.join(home, '.gemini', '.env'), command: 'gemini', kind: 'gemini', keyInFile: true },
   { id: 'opencode', name: 'OpenCode', file: path.join(home, '.config', 'opencode', 'opencode.json'), command: 'opencode', kind: 'json', keyInFile: false },
   { id: 'openclaw', name: 'OpenClaw', file: path.join(home, '.openclaw', 'openclaw.json'), command: 'openclaw', kind: 'json5', keyInFile: false },
   { id: 'hermes', name: 'Hermes', file: path.join(home, '.hermes', 'config.yaml'), command: 'hermes', kind: 'yaml', keyInFile: false },
@@ -50,8 +52,6 @@ const AGENTS: Agent[] = [
   { id: 'continue', name: 'Continue CLI', file: path.join(home, '.continue', 'config.yaml'), command: 'cn', kind: 'yamlseq', keyInFile: false },
   { id: 'goose', name: 'Goose', file: path.join(GOOSE_DIR, 'config.yaml'), command: 'goose', kind: 'goose', keyInFile: false },
   { id: 'dsh', name: 'DeepSeek Harness', file: path.join(process.env.DSH_HOME || path.join(home, '.dsh'), 'cordis.patch.yml'), command: 'dsh', kind: 'dsh', keyInFile: false },
-  // Gemini CLI reads the base URL and key from ~/.gemini/.env (trusted folders only); the model and auth type live in settings.json.
-  { id: 'gemini', name: 'Gemini CLI', file: path.join(home, '.gemini', '.env'), command: 'gemini', kind: 'gemini', keyInFile: true },
   // Cline's CLI keeps provider settings (including the key) in this file; we write it only through `cline auth`.
   { id: 'cline', name: 'Cline', file: path.join(home, '.cline', 'data', 'settings', 'providers.json'), command: 'cline', kind: 'cline', keyInFile: true },
   // Cline's CLI keeps provider settings (including the key) in this file; we write it only through `cline auth`.
