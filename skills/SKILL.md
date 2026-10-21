@@ -58,9 +58,9 @@ URL=$(wavespeed upload ./hero.jpg --json | jq -r .url)
 wavespeed run ... -p "..." --download "./out/{index}.{ext}"
 ```
 
-## Check the cost first
+## Cost questions
 
-Before a long or expensive run (video, many outputs, or when the user mentions budget), get an estimate. It does not generate anything and is not charged:
+Just run what the user asked for; there is no need to price it first. Only when the user asks what something will cost, or sets a budget, get an estimate. It generates nothing and is not charged:
 
 ```bash
 wavespeed price wavespeed-ai/minimax-h3/text-to-video -p "…" -i duration=5 --json   # {price, discounted_price, currency, estimate}
