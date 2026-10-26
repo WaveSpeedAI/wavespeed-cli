@@ -147,6 +147,10 @@ wavespeed setup [agent]                  Point a coding agent (claude, codex, ge
 wavespeed run [model|alias] -p "…"       Run any model or alias (uses defaultModel if omitted)
 wavespeed run <model|alias> --sync       Attempt sync wait; timed-out tasks remain queryable
 wavespeed run <model|alias> -h           Dynamic schema-based help (alias-aware)
+wavespeed generate image|video "…"       /chat models; picks the endpoint from your inputs (--image/--first-frame/--ref-*)
+wavespeed edit image|video "…"           Edit images (--image) or a video (--video)
+wavespeed extend video "…" --video …     Continue a video
+                                         Shortcuts adapt the request to the model (printed); add --estimate to price without running
 wavespeed schema <model>                 Pretty-print a model's input schema
 wavespeed models [query]                 Browse the live catalog (cached 1h)
 wavespeed aliases                        List aliases from wavespeed.json + user config

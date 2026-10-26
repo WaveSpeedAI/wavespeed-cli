@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import { printBanner } from './lib/banner.js';
 import { registerAuth } from './commands/auth.js';
 import { registerRun } from './commands/run.js';
+import { registerMedia } from './commands/media.js';
 import { registerUpload } from './commands/upload.js';
 import { registerDownload } from './commands/download.js';
 import { registerModels } from './commands/models.js';
@@ -54,6 +55,7 @@ ${chalk.gray('Docs:')} ${chalk.cyan('https://wavespeed.ai/docs')}    ${chalk.gra
 
 registerAuth(program);
 registerRun(program);
+registerMedia(program);
 registerUpload(program);
 registerDownload(program);
 registerModels(program);

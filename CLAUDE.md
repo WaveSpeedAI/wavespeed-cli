@@ -18,13 +18,13 @@ Tests use Vitest and live in `src/**/*.test.ts` alongside the code they cover (e
 
 ## Architecture
 
-**One generation verb.** `wavespeed run <model_id|alias>` is the only generate command. Everything else is auxiliary (auth, catalog browse, schema, upload/download, project config).
+**One generic generation verb.** `wavespeed run <model_id|alias>` is the only generic generate command; `generate|edit|extend` (`src/commands/media.ts`) are fixed-model shortcuts for the /chat models. Everything else is auxiliary (auth, catalog browse, schema, upload/download, project config).
 
 **Two invariants that span multiple files:**
 
 1. **JSON-first stdout protocol** (`src/lib/log.ts`). When `--json` is set, stdout is reserved for the final JSON payload only; progress, spinners, and human text go to stderr. Use `setJsonMode/log/emitJson/emitJsonError` in any new command.
 
-2. **The CLI never mutates user input.** What the user passes is what hits the API. Don't add silent prompt prefixes, palette injections, or style suffixes. The two explicit mechanisms that transform input are aliases (named bundles of extra inputs) and the `@path` marker (`src/lib/local-files.ts`), which uploads the referenced file and substitutes its hosted URL. Never widen `@` into heuristic auto-detection of bare paths — that was tried and deliberately reverted.
+2. **The CLI never mutates user input.** What the user passes is what hits the API. Don't add silent prompt prefixes, palette injections, or style suffixes. The two explicit mechanisms that transform input are aliases (named bundles of extra inputs) and the `@path` marker (`src/lib/local-files.ts`), which uploads the referenced file and substitutes its hosted URL. The shortcut verbs are the one deliberate exception: they pick the endpoint and fit the request to the model's schema (enum snapping, clamps, `@image 1` prompt-reference renaming), print every change, and `--estimate` shows the final input; `run` never does this. Never widen `@` into heuristic auto-detection of bare paths — that was tried and deliberately reverted.
 
 **Live API as catalog source.** `src/lib/api.ts:fetchModels()` calls `GET /api/v3/models` and caches the response to `~/.cache/wavespeed/models.json` (1h TTL, keyed on baseUrl). `models`, `schema`, and dynamic `run -h` all read from this single payload. There is no bundled catalog.
 
