@@ -7,7 +7,7 @@ import { requireClient } from '../lib/client.js';
 import { parseInputs, withInputSyntaxHint } from '../lib/inputs.js';
 import { resolveLocalFiles } from '../lib/local-files.js';
 import { fetchModels, submitPrediction, waitForPrediction, SubmitResult } from '../lib/api.js';
-import { findUnknownInputs } from '../lib/validate-inputs.js';
+import { findUnknownInputs, modelInputProps } from '../lib/validate-inputs.js';
 import { uploadWithCache } from '../lib/upload-cache.js';
 import { downloadOutputs, printOutputs } from '../lib/output.js';
 import { emitJson, emitJsonError, isJsonMode, log, setJsonMode } from '../lib/log.js';
@@ -160,6 +160,7 @@ export function registerRun(program: Command): void {
       try {
         const uploadSpinner = !isJsonMode() ? ora({ color: 'magenta' }) : null;
         const resolved = await resolveLocalFiles(input, {
+          props: await modelInputProps(model),
           upload: async (file) => (await uploadWithCache(file, (f) => client.upload(f))).url,
           onUpload: (file, i, total) => {
             uploadSpinner?.start(

@@ -52,6 +52,7 @@ async function execute(prompt: string, opts: Common, build: (args: Record<string
   try {
     const spinner = !isJsonMode() ? ora({ color: 'magenta' }) : null;
     const resolved = await resolveLocalFiles(media, {
+      allFields: true,
       upload: async (file) => (await uploadWithCache(file, (f) => client.upload(f))).url,
       onUpload: (file, i, total) => spinner?.start(total > 1 ? `Uploading ${path.basename(file)} (${i + 1}/${total})…` : `Uploading ${path.basename(file)}…`),
     });

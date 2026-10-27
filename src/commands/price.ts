@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { fetchPricing, modelPlaygroundUrl } from '../lib/api.js';
 import { parseInputs } from '../lib/inputs.js';
+import { modelInputProps } from '../lib/validate-inputs.js';
 import { resolveModelToken } from '../lib/config.js';
 import { collectLocalFiles, resolveLocalFiles } from '../lib/local-files.js';
 import { uploadWithCache } from '../lib/upload-cache.js';
@@ -35,7 +36,8 @@ export function registerPrice(program: Command): void {
       // pricing engine. Uploading is slow and quota-limited, so it is opt-in:
       // without --upload we stop and say why, rather than silently sending a
       // filesystem path and quoting from garbage.
-      const localRefs = collectLocalFiles(inputs);
+      const props = await modelInputProps(resolved.model);
+      const localRefs = collectLocalFiles(inputs, { props });
       let uploadedUrls: Record<string, string> = {};
       if (localRefs.length > 0 && !opts.upload) {
         const files = [...new Set(localRefs.map((r) => r.path))].join(', ');
@@ -52,6 +54,7 @@ export function registerPrice(program: Command): void {
         const upSpinner = !opts.json ? ora('Uploading for an exact quote…').start() : null;
         try {
           const resolvedFiles = await resolveLocalFiles(inputs, {
+            props,
             upload: async (file) => {
               const { url, cached } = await uploadWithCache(file, (f) => client.upload(f));
               uploadedUrls[file] = url;

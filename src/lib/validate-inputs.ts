@@ -10,12 +10,22 @@
 // cache miss) means no check. It must never block a submission the API would
 // have accepted.
 
-import { LiveModel } from './api.js';
+import { LiveModel, fetchModels } from './api.js';
 
 export interface UnknownKeyReport {
   unknown: string[];
   known: string[];
   suggestions: Map<string, string>;
+}
+
+/** The model's input properties with their definitions, or undefined when the catalog has no schema (fails open). */
+export async function modelInputProps(modelId: string): Promise<Record<string, unknown> | undefined> {
+  try {
+    const { models } = await fetchModels();
+    return models.find((m) => m.model_id === modelId)?.api_schema?.api_schemas?.[0]?.request_schema?.properties;
+  } catch {
+    return undefined;
+  }
 }
 
 export function requestSchemaProps(model: LiveModel | undefined): string[] | null {
