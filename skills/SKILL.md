@@ -5,7 +5,7 @@ description: Generate or edit AI media (image, video, audio, 3D) by calling the 
 
 # WaveSpeed
 
-You have access to the `wavespeed` CLI. Every generation flows through one verb. There are no `image` / `video` shortcuts; the model id is always explicit.
+You have access to the `wavespeed` CLI. Every generation flows through one generic verb, `wavespeed run`, and the model id is always explicit. For plain image and video work there are also shortcut commands (see the end).
 
 ## The three-step pattern
 
@@ -78,6 +78,7 @@ The CLI never modifies the user's prompt or inputs. The single exception is expl
 - Use `--json` on every `run` so you can read `outputs[0]` programmatically.
 - `wavespeed delete` requires `--yes` when run non-interactively (that includes you).
 - Cost and spend: `wavespeed price <id> -i k=v --json` estimates a run without generating or charging; `wavespeed balance` shows remaining credit; `wavespeed usage` (totals, per-model) and `wavespeed billings` (per-charge records) show what was spent.
+- If a run fails with `Insufficient credits` (or says a top-up is required), the balance is too low: do not retry. Tell the user, and give them https://wavespeed.ai/top-up to add credits (`wavespeed balance` shows the balance and the link). You cannot pay for them.
 - A `run` that fails with a gateway or network error (502/503/504, connection reset, timeout) does NOT mean the task failed, and the submit request is never retried automatically, so re-running can create a duplicate paid task. Do not re-run immediately. If the error contains a task id (`task_id` / prediction id), keep checking it with `wavespeed show <id> --json` until its status is terminal (`completed`, `failed`, `cancelled`, `timeout`, `deleted`). If no id was returned, check recent predictions with `wavespeed history --json` (add `--model <id>`; default window is the last 24h) and re-run once only if none matches. A client-side wait timeout or an interrupted `run` does not mean the task failed: tasks can run for a long time, so do not give up after a fixed time.
 
 ## Shortcuts for common image/video work
