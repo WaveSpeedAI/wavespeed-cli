@@ -42,6 +42,11 @@ npm install -g @wavespeed/cli
 # friendlier error path)
 curl -fsSL https://raw.githubusercontent.com/WaveSpeedAI/wavespeed-cli/main/install.sh | bash
 
+# macOS / Linux with Homebrew (standalone executable, no Node.js needed)
+brew tap wavespeedai/tap
+brew trust wavespeedai/tap   # recent Homebrew refuses formulae from an untrusted tap
+brew install wavespeed
+
 # no Node.js/npm? install.sh falls back to a standalone executable on macOS/Linux;
 # on Windows (PowerShell):
 irm https://raw.githubusercontent.com/WaveSpeedAI/wavespeed-cli/main/install.ps1 | iex
