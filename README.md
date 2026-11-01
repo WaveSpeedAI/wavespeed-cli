@@ -108,26 +108,32 @@ Resolution: positional with `/` is a model ID; otherwise looked up as an alias. 
 
 ## Recommended starting models
 
-| Use case | Model |
-|---|---|
-| Text → image | `bytedance/seedream-v5.0-pro` |
-| Image edit | `bytedance/seedream-v5.0-pro/edit` |
-| Text → video | `wavespeed-ai/minimax-h3/text-to-video` |
-| Image → video | `wavespeed-ai/minimax-h3/image-to-video` |
-| Video edit | `wavespeed-ai/minimax-h3/video-edit` |
-| Video extend | `wavespeed-ai/minimax-h3/video-extend` |
+For plain images and videos, the shortcuts pick the endpoint for you and use the same models as the [WaveSpeed /chat](https://wavespeed.ai/chat) page:
 
-MiniMax H3 is the open-weights default: cheap, fast, and native stereo audio — the best place to start. When you need the highest quality, switch to `bytedance/seedance-2.5/*` (text-to-video, image-to-video, video-edit, video-extend). Browse alternatives with `wavespeed models <query>`.
+```bash
+wavespeed generate image "a cyberpunk skyline at golden hour" --json
+wavespeed edit image "replace the background with a sunlit kitchen" --image @./photo.jpg --json
+wavespeed generate video "slow push-in on a lighthouse at dusk" --estimate --json   # price first, nothing submitted
+wavespeed edit video "make it snow" --video @./clip.mp4 --json
+wavespeed extend video "the camera keeps rising" --video @./clip.mp4 --json
+```
+
+| | Default | Alternatives (`-m`) |
+|---|---|---|
+| Image | `seedream-5-pro` | `gpt-image-2.5`, `nano-banana-2.1`, `nano-banana-pro`, `nano-banana-2`, `gpt-image-2` |
+| Video | `seedance-2.5` | `seedance-2.5-turbo`, `kling-4.0`, `wan-3.0`, `wan-3.0-prime`, `minimax-h3` (cheap and fast, native stereo audio, 768p by default), Seedance 2.0 tiers |
+
+For everything else (audio, 3D, upscaling, a specific endpoint), find the model with `wavespeed models <query>` and call it with `wavespeed run <model-id>`.
 
 ## Use from coding agents
 
-No MCP server, no daemon. The CLI **is** the interface — agents already know how to run shell commands.
+The CLI needs no MCP server or daemon: agents already know how to run shell commands. If your agent supports MCP, the [WaveSpeed MCP server](https://github.com/WaveSpeedAI/mcp-server) offers the same actions as tools, and the skill covers both.
 
 ```bash
 wavespeed skill install        # writes .claude/skills/wavespeed/SKILL.md and .agents/skills/wavespeed/SKILL.md
 ```
 
-The skill teaches the agent the three-step pattern: `models` to find, `run <id> -h` to discover params, `run <id> -p "…" --json` to execute. Every command supports `--json` for clean piping.
+The skill teaches the agent the shortcuts for images and videos (`generate`, `edit`, `extend`, with the default models), and for everything else the three-step pattern: `models` to find, `run <id> -h` to discover params, `run <id> -p "…" --json` to execute. Every command supports `--json` for clean piping.
 
 **OpenCode** loads the same file with no extra steps — `.claude/skills/` is on its skill search path.
 
