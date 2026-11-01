@@ -135,7 +135,7 @@ wavespeed skill install        # writes .claude/skills/wavespeed/SKILL.md and .a
 
 The skill teaches the agent the shortcuts for images and videos (`generate`, `edit`, `extend`, with the default models), and for everything else the three-step pattern: `models` to find, `run <id> -h` to discover params, `run <id> -p "…" --json` to execute. Every command supports `--json` for clean piping.
 
-**OpenCode** loads the same file with no extra steps — `.claude/skills/` is on its skill search path.
+**OpenCode** loads the same file with no extra steps — `.claude/skills/` is on its skill search path. For the MCP tools as well, add the plugin to your OpenCode config — `"plugin": ["@wavespeed/opencode"]` — and run `opencode mcp auth wavespeed` ([WaveSpeedAI/wavespeed-opencode](https://github.com/WaveSpeedAI/wavespeed-opencode)).
 
 **Codex** reads `.agents/skills/`, which the same command writes. For a one-line install that also wires up the MCP server: `codex plugin marketplace add WaveSpeedAI/codex-plugin-wavespeed-cli` ([WaveSpeedAI/codex-plugin-wavespeed-cli](https://github.com/WaveSpeedAI/codex-plugin-wavespeed-cli)).
 
