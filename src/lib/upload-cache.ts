@@ -7,11 +7,18 @@
 //
 // TTL is 24h: hosted media does not expire that fast, but a bounded window
 // keeps the cache from ever serving a URL the platform has since removed.
+//
+// One file per caller, `uploads-<callerCacheId>.json` (a hash of base URL +
+// API key, never the key itself): an upload belongs to the account that made
+// it, so another key on the same machine must not reuse it. Same name and
+// format as the MCP server, so both tools share a key's uploads. The old
+// shared `uploads.json` is left alone for older versions.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
+import { callerCacheId, getApiKey, getBaseUrl } from './config.js';
 
 const TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -20,22 +27,22 @@ interface CacheEntry {
   uploaded_at: number;
 }
 
-function cacheFile(): string {
-  return path.join(os.homedir(), '.cache', 'wavespeed', 'uploads.json');
+export function uploadCacheFile(cacheId: string = callerCacheId(getBaseUrl(), getApiKey())): string {
+  return path.join(os.homedir(), '.cache', 'wavespeed', `uploads-${cacheId}.json`);
 }
 
-function readCache(): Record<string, CacheEntry> {
+function readCache(file: string): Record<string, CacheEntry> {
   try {
-    return JSON.parse(fs.readFileSync(cacheFile(), 'utf8'));
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch {
     return {};
   }
 }
 
-function writeCache(entries: Record<string, CacheEntry>): void {
+function writeCache(file: string, entries: Record<string, CacheEntry>): void {
   try {
-    fs.mkdirSync(path.dirname(cacheFile()), { recursive: true });
-    fs.writeFileSync(cacheFile(), JSON.stringify(entries));
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(entries));
   } catch {
     /* best-effort; a failed cache write must never fail the upload */
   }
@@ -54,7 +61,8 @@ export async function uploadWithCache(
   doUpload: (p: string) => Promise<string>,
 ): Promise<{ url: string; cached: boolean }> {
   const key = hashFile(filePath);
-  const entries = readCache();
+  const file = uploadCacheFile();
+  const entries = readCache(file);
   const hit = entries[key];
   if (hit && Date.now() - hit.uploaded_at < TTL_MS) {
     return { url: hit.url, cached: true };
@@ -65,6 +73,6 @@ export async function uploadWithCache(
   for (const [k, v] of Object.entries(entries)) {
     if (Date.now() - v.uploaded_at >= TTL_MS) delete entries[k];
   }
-  writeCache(entries);
+  writeCache(file, entries);
   return { url, cached: false };
 }

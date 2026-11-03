@@ -5,8 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import crypto from 'node:crypto';
-import { getApiKey, getBaseUrl } from './config.js';
+import { callerCacheId, getApiKey, getBaseUrl } from './config.js';
 import { clientAttributionHeaders } from './client-headers.js';
 
 // Mirrors the /api/v3/models response shape — see ../wavespeed-desktop/src/types/model.ts
@@ -45,13 +44,11 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 // The catalog is per caller: the API serves internal users, paid
 // organizations and everyone else different model lists. So the cache is one
-// file per (base URL, API key), named by a hash that cannot be reversed to the
-// key. The MCP server (@wavespeed/mcp) uses the same name and file format, so
-// both tools share a key's cache. The old shared `models.json` is no longer
-// read or written.
+// file per (base URL, API key), `models-<callerCacheId>.json`, shared with the
+// MCP server (same name and format). The old shared `models.json` is left
+// alone for older versions that still read it; this version never uses it.
 export function modelsCacheFile(baseUrl: string, apiKey: string): string {
-  const digest = crypto.createHash('sha256').update(`${baseUrl}\n${apiKey}`).digest('hex').slice(0, 16);
-  return path.join(os.homedir(), '.cache', 'wavespeed', `models-${digest}.json`);
+  return path.join(os.homedir(), '.cache', 'wavespeed', `models-${callerCacheId(baseUrl, apiKey)}.json`);
 }
 
 interface CacheFile {
@@ -117,17 +114,14 @@ export async function fetchModels(opts: FetchModelsOptions = {}): Promise<{
   return { models: json.data, source: 'live' };
 }
 
-/** Removes the current key's catalog cache (and the legacy shared file). */
+/** Removes the current key's catalog cache. */
 export function clearModelsCache(): void {
-  const files = [path.join(os.homedir(), '.cache', 'wavespeed', 'models.json')];
   const apiKey = getApiKey();
-  if (apiKey) files.push(modelsCacheFile(getBaseUrl(), apiKey));
-  for (const f of files) {
-    try {
-      fs.unlinkSync(f);
-    } catch {
-      /* nothing to clear */
-    }
+  if (!apiKey) return;
+  try {
+    fs.unlinkSync(modelsCacheFile(getBaseUrl(), apiKey));
+  } catch {
+    /* nothing to clear */
   }
 }
 

@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { fetchModels, modelsCacheFile } from './api.js';
+import { clearModelsCache, fetchModels, modelsCacheFile } from './api.js';
+import { callerCacheId } from './config.js';
+import { uploadCacheFile, uploadWithCache } from './upload-cache.js';
 
 const realFetch = globalThis.fetch;
 let home: string;
@@ -68,7 +70,7 @@ describe('models cache', () => {
     }
   });
 
-  it('ignores the legacy shared models.json', async () => {
+  it('ignores the legacy shared models.json and leaves it for older versions', async () => {
     const dir = path.join(home, '.cache', 'wavespeed');
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(
@@ -78,5 +80,44 @@ describe('models cache', () => {
     catalogServer();
     vi.stubEnv('WAVESPEED_API_KEY', 'k');
     expect((await fetchModels()).models[0].model_id).toBe('only/k');
+    clearModelsCache();
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'models.json'), 'utf8')).models[0].model_id).toBe('stale/other-key');
+    expect(fs.existsSync(modelsCacheFile('https://api.example.test', 'k'))).toBe(false);
+  });
+});
+
+describe('caller cache id', () => {
+  it('is the first 16 hex of sha256(base_url + "\\n" + api_key), per key and per base URL', () => {
+    const want = crypto.createHash('sha256').update('https://api.wavespeed.ai\nk1').digest('hex').slice(0, 16);
+    expect(callerCacheId('https://api.wavespeed.ai', 'k1')).toBe(want);
+    expect(callerCacheId('https://api.wavespeed.ai', 'k2')).not.toBe(want);
+    expect(callerCacheId('https://other.test', 'k1')).not.toBe(want);
+  });
+});
+
+describe('upload cache', () => {
+  it('is uploads-<caller id>.json, separate per key, and leaves uploads.json alone', async () => {
+    const dir = path.join(home, '.cache', 'wavespeed');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'uploads.json'), '{"legacy":{"url":"u","uploaded_at":1}}');
+    const file = path.join(home, 'img.png');
+    fs.writeFileSync(file, 'bytes');
+
+    vi.stubEnv('WAVESPEED_API_KEY', 'key-a');
+    expect(path.basename(uploadCacheFile())).toBe(`uploads-${callerCacheId('https://api.example.test', 'key-a')}.json`);
+    const up = vi.fn(async () => 'https://media.test/a.png');
+    expect(await uploadWithCache(file, up)).toEqual({ url: 'https://media.test/a.png', cached: false });
+    expect(await uploadWithCache(file, up)).toEqual({ url: 'https://media.test/a.png', cached: true });
+
+    vi.stubEnv('WAVESPEED_API_KEY', 'key-b');
+    const upB = vi.fn(async () => 'https://media.test/b.png');
+    expect(await uploadWithCache(file, upB)).toEqual({ url: 'https://media.test/b.png', cached: false });
+    expect(up).toHaveBeenCalledTimes(1);
+    expect(upB).toHaveBeenCalledTimes(1);
+
+    expect(fs.readFileSync(path.join(dir, 'uploads.json'), 'utf8')).toBe('{"legacy":{"url":"u","uploaded_at":1}}');
+    for (const f of fs.readdirSync(dir)) {
+      expect(fs.readFileSync(path.join(dir, f), 'utf8')).not.toContain('key-');
+    }
   });
 });

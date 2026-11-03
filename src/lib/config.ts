@@ -1,6 +1,18 @@
 import Conf from 'conf';
 import path from 'node:path';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
+
+/**
+ * Names the caller's own cache files (catalog, uploads) in ~/.cache/wavespeed:
+ * the first 16 hex of sha256(base_url + "\n" + api_key). Catalogs and uploads
+ * differ per account, so two keys on one machine must not share a cache; only
+ * this hash is ever written, never the key. The MCP server (@wavespeed/mcp)
+ * uses the same scheme so both tools share a key's caches.
+ */
+export function callerCacheId(baseUrl: string, apiKey: string | undefined): string {
+  return crypto.createHash('sha256').update(`${baseUrl}\n${apiKey ?? ''}`).digest('hex').slice(0, 16);
+}
 
 export interface ModelAlias {
   model: string;
