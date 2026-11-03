@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { fetchHistory, HistoryItem, PREDICTION_STATUSES } from '../lib/api.js';
 import { toIso } from '../lib/time.js';
+import { describeOutput } from '../lib/output.js';
 
 function statusBadge(status: string): string {
   const map: Record<string, (s: string) => string> = {
@@ -44,7 +45,7 @@ export function beyondWindow(since: string, until?: string): boolean {
 
 function firstOutput(item: HistoryItem): string {
   const out = item.outputs?.[0];
-  if (typeof out === 'string') return out;
+  if (typeof out === 'string') return describeOutput(out);
   return '';
 }
 
