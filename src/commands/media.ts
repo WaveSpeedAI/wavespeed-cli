@@ -89,7 +89,11 @@ async function execute(prompt: string, opts: Common, build: (args: Record<string
   if (!isJsonMode()) spinner.start();
   let id: string | undefined;
   try {
-    const submitted = await submitPrediction(plan.modelId, plan.input);
+    const submitted = await submitPrediction(plan.modelId, plan.input, {
+      onRetry: (attempt, delayMs) => {
+        spinner.text = `Rate limited, retrying in ${Math.ceil(delayMs / 1000)}s (attempt ${attempt})…`;
+      },
+    });
     id = submitted.id;
     if (!id) throw new Error(`No prediction ID in response: ${JSON.stringify(submitted)}`);
     if (!isJsonMode()) {

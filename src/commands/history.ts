@@ -25,6 +25,23 @@ function formatTime(iso: string): string {
   }
 }
 
+// A YYYY-MM-DD date `n` months back, for hints that must stay inside the
+// API's search window.
+function monthsAgo(n: number): string {
+  const d = new Date();
+  d.setUTCMonth(d.getUTCMonth() - n);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/** True when --since reaches further back than the API's 3-month window. */
+export function beyondWindow(since: string, until?: string): boolean {
+  const end = until ? new Date(toIso(until, true)) : new Date();
+  const oldest = new Date(end);
+  oldest.setUTCMonth(oldest.getUTCMonth() - 3);
+  return new Date(toIso(since)).getTime() < oldest.getTime();
+}
+
 function firstOutput(item: HistoryItem): string {
   const out = item.outputs?.[0];
   if (typeof out === 'string') return out;
@@ -34,12 +51,12 @@ function firstOutput(item: HistoryItem): string {
 export function registerHistory(program: Command): void {
   program
     .command('history')
-    .description('List your recent predictions (default: last 24h)')
-    .option('--page <n>', 'Page number', '1')
+    .description('List your recent predictions (default: last 24h; the API keeps only the last 3 months searchable)')
+    .option('--page <n>', 'Page number (the API serves at most page 100)', '1')
     .option('--limit <n>', 'Page size (1-100)', '20')
     .option('--model <id>', 'Filter by model ID')
     .option('--status <s>', 'Filter by status (created, processing, completed, failed, cancelled, timeout, deleted)')
-    .option('--since <time>', 'Predictions created after this time (ISO or YYYY-MM-DD)')
+    .option('--since <time>', 'Predictions created after this time (ISO or YYYY-MM-DD; at most 3 months before --until)')
     .option('--until <time>', 'Predictions created before this time (ISO or YYYY-MM-DD)')
     .option('--json', 'Emit JSON: {page, items: [...]}')
     .action(async (opts: any) => {
@@ -65,6 +82,12 @@ export function registerHistory(program: Command): void {
           process.stdout.write(JSON.stringify(data, null, 2) + '\n');
           return;
         }
+        if (opts.since && beyondWindow(opts.since, opts.until)) {
+          console.error(
+            chalk.yellow('Note: ') +
+              chalk.gray('the API searches at most 3 months before --until (or now); earlier predictions are not listed.'),
+          );
+        }
 
         const items = data.items ?? [];
         console.log();
@@ -78,7 +101,12 @@ export function registerHistory(program: Command): void {
         console.log();
 
         if (items.length === 0) {
-          console.log(chalk.gray('  no predictions in this range. Try --since "2026-01-01" for a wider window.'));
+          console.log(
+            chalk.gray(
+              `  no predictions in this range. Widen it with --since (e.g. --since ${monthsAgo(3)}); ` +
+                'the API searches at most the 3 months before --until, earlier dates are ignored.',
+            ),
+          );
           console.log();
           return;
         }

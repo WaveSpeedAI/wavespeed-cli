@@ -58,6 +58,19 @@ export function requestSchemaAliases(model: LiveModel | undefined): Map<string, 
   return aliases;
 }
 
+/**
+ * Request controls the API accepts for every model without any schema
+ * declaring them: `enable_sync_mode` and `enable_base64_output` survive the
+ * API's unknown-field whitelist, and `enable_content_filter` is read (and must
+ * be a boolean) before that whitelist runs. Rejecting them as typos would block
+ * valid requests.
+ */
+export const GLOBAL_CONTROL_INPUTS: ReadonlySet<string> = new Set([
+  'enable_sync_mode',
+  'enable_base64_output',
+  'enable_content_filter',
+]);
+
 // Small edit distance for typo hints — inputs are short snake_case tokens, so
 // a full Levenshtein over ≤40 keys is nothing.
 function editDistance(a: string, b: string): number {
@@ -99,11 +112,13 @@ export function findUnknownInputs(
   if (!known) return null;
   const knownSet = new Set(known);
   const aliases = requestSchemaAliases(model);
-  const unknown = Object.keys(input).filter((k) => !knownSet.has(k) && !aliases.has(k));
+  const unknown = Object.keys(input).filter(
+    (k) => !knownSet.has(k) && !aliases.has(k) && !GLOBAL_CONTROL_INPUTS.has(k),
+  );
   if (unknown.length === 0) return null;
   const suggestions = new Map<string, string>();
   for (const k of unknown) {
-    const hit = closest(k, known);
+    const hit = closest(k, [...known, ...GLOBAL_CONTROL_INPUTS]);
     if (hit) suggestions.set(k, hit);
   }
   return { unknown, known, suggestions };

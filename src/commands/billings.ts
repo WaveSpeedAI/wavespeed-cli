@@ -20,13 +20,13 @@ function formatTime(iso: string): string {
 export function registerBillings(program: Command): void {
   program
     .command('billings')
-    .description('List itemized charges and refunds (billing records)')
+    .description('List itemized charges and refunds (billing records; the API covers at most the last 3 months)')
     .option('--page <n>', 'Page number', '1')
     .option('--limit <n>', 'Page size (1-100)', '20')
     .option('--type <t>', 'Filter by type: deduct or refund')
-    .option('--model <uuid>', 'Filter by model')
+    .option('--model <id>', 'Filter by model ID, as passed to `run` (e.g. bytedance/seedream-v5.0-pro)')
     .option('--key <uuid>', 'Filter by the API key that generated the charge')
-    .option('--since <time>', 'Records after this time (ISO or YYYY-MM-DD)')
+    .option('--since <time>', 'Records after this time (ISO or YYYY-MM-DD; at most 3 months before --until, default: that whole window)')
     .option('--until <time>', 'Records before this time (ISO or YYYY-MM-DD)')
     .option('--json', 'Emit JSON: {page, has_more, items}')
     .action(async (opts: any) => {
@@ -57,7 +57,7 @@ export function registerBillings(program: Command): void {
         console.log();
 
         if (items.length === 0) {
-          console.log(chalk.gray('  no billing records in this range.'));
+          console.log(chalk.gray('  no billing records in this range (the API searches at most the 3 months before --until or now).'));
           console.log();
           return;
         }

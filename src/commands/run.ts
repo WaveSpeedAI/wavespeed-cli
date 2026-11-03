@@ -197,7 +197,13 @@ export function registerRun(program: Command): void {
       const startedAt = Date.now();
       let submitted: SubmitResult;
       try {
-        submitted = await submitPrediction(model, input, { sync: !!opts.sync });
+        submitted = await submitPrediction(model, input, {
+          sync: !!opts.sync,
+          // 429 comes before any task exists, so it is safe to wait and resend.
+          onRetry: (attempt, delayMs) => {
+            spinner.text = `Rate limited, retrying in ${Math.ceil(delayMs / 1000)}s (attempt ${attempt})…`;
+          },
+        });
       } catch (err: any) {
         const message = withInputSyntaxHint(err.message ?? String(err), opts.input);
         spinner.fail(message);

@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import { getApiKey, getBaseUrl } from './config.js';
 import { clientAttributionHeaders } from './client-headers.js';
 
@@ -42,8 +43,15 @@ interface ModelsEnvelope {
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-function cachePath(): string {
-  return path.join(os.homedir(), '.cache', 'wavespeed', 'models.json');
+// The catalog is per caller: the API serves internal users, paid
+// organizations and everyone else different model lists. So the cache is one
+// file per (base URL, API key), named by a hash that cannot be reversed to the
+// key. The MCP server (@wavespeed/mcp) uses the same name and file format, so
+// both tools share a key's cache. The old shared `models.json` is no longer
+// read or written.
+export function modelsCacheFile(baseUrl: string, apiKey: string): string {
+  const digest = crypto.createHash('sha256').update(`${baseUrl}\n${apiKey}`).digest('hex').slice(0, 16);
+  return path.join(os.homedir(), '.cache', 'wavespeed', `models-${digest}.json`);
 }
 
 interface CacheFile {
@@ -52,9 +60,9 @@ interface CacheFile {
   models: LiveModel[];
 }
 
-function readCache(baseUrl: string): LiveModel[] | null {
+function readCache(file: string, baseUrl: string): LiveModel[] | null {
   try {
-    const raw = fs.readFileSync(cachePath(), 'utf8');
+    const raw = fs.readFileSync(file, 'utf8');
     const parsed = JSON.parse(raw) as CacheFile;
     if (parsed.base_url !== baseUrl) return null;
     if (Date.now() - parsed.fetched_at > CACHE_TTL_MS) return null;
@@ -64,11 +72,11 @@ function readCache(baseUrl: string): LiveModel[] | null {
   }
 }
 
-function writeCache(baseUrl: string, models: LiveModel[]): void {
+function writeCache(file: string, baseUrl: string, models: LiveModel[]): void {
   try {
-    fs.mkdirSync(path.dirname(cachePath()), { recursive: true });
+    fs.mkdirSync(path.dirname(file), { recursive: true });
     const body: CacheFile = { fetched_at: Date.now(), base_url: baseUrl, models };
-    fs.writeFileSync(cachePath(), JSON.stringify(body));
+    fs.writeFileSync(file, JSON.stringify(body));
   } catch {
     /* best-effort cache; ignore failures */
   }
@@ -84,14 +92,14 @@ export async function fetchModels(opts: FetchModelsOptions = {}): Promise<{
   source: 'cache' | 'live';
 }> {
   const baseUrl = getBaseUrl();
-
-  if (!opts.noCache && !opts.refresh) {
-    const cached = readCache(baseUrl);
-    if (cached) return { models: cached, source: 'cache' };
-  }
-
   const apiKey = getApiKey();
   if (!apiKey) throw new Error('No API key configured. Run `wavespeed login`.');
+  const file = modelsCacheFile(baseUrl, apiKey);
+
+  if (!opts.noCache && !opts.refresh) {
+    const cached = readCache(file, baseUrl);
+    if (cached) return { models: cached, source: 'cache' };
+  }
 
   const res = await fetch(`${baseUrl}/api/v3/models`, {
     headers: { Authorization: `Bearer ${apiKey}`, ...clientAttributionHeaders() },
@@ -105,15 +113,21 @@ export async function fetchModels(opts: FetchModelsOptions = {}): Promise<{
     throw new Error(json.message || `API returned code ${json.code}`);
   }
 
-  if (!opts.noCache) writeCache(baseUrl, json.data);
+  if (!opts.noCache) writeCache(file, baseUrl, json.data);
   return { models: json.data, source: 'live' };
 }
 
+/** Removes the current key's catalog cache (and the legacy shared file). */
 export function clearModelsCache(): void {
-  try {
-    fs.unlinkSync(cachePath());
-  } catch {
-    /* nothing to clear */
+  const files = [path.join(os.homedir(), '.cache', 'wavespeed', 'models.json')];
+  const apiKey = getApiKey();
+  if (apiKey) files.push(modelsCacheFile(getBaseUrl(), apiKey));
+  for (const f of files) {
+    try {
+      fs.unlinkSync(f);
+    } catch {
+      /* nothing to clear */
+    }
   }
 }
 
@@ -152,10 +166,12 @@ async function httpError(res: Response, method: string, path: string): Promise<E
   } catch {
     /* non-JSON body (gateway error page, empty response) — fall back below */
   }
-  const err: Error & { status?: number } = detail
+  const err: Error & { status?: number; retryAfter?: string } = detail
     ? new Error(detail)
     : new Error(`${method} ${path} failed: ${res.status} ${res.statusText}`);
   err.status = res.status;
+  const retryAfter = res.headers.get('retry-after');
+  if (retryAfter) err.retryAfter = retryAfter;
   return err;
 }
 
@@ -217,8 +233,42 @@ export interface HistoryItem {
   inputs?: Record<string, unknown>;
   input?: Record<string, unknown>;
   created_at: string;
-  executionTime?: number;
+  /** `inference` is the run time in milliseconds. */
+  timings?: { inference?: number };
   error?: string;
+}
+
+/** The run time in ms the API reports (`timings.inference`), or undefined when absent or zero. */
+export function inferenceMs(item: Pick<HistoryItem, 'timings'>): number | undefined {
+  const ms = item.timings?.inference;
+  return typeof ms === 'number' && ms > 0 ? ms : undefined;
+}
+
+// Statuses a prediction moves on from; anything else ends polling.
+const IN_PROGRESS_STATUSES = new Set(['created', 'processing']);
+const FAILED_STATUSES = new Set(['failed', 'cancelled', 'timeout', 'deleted']);
+
+function hasOutputs(item: HistoryItem): boolean {
+  return Array.isArray(item.outputs) && item.outputs.length > 0;
+}
+
+/**
+ * Why a prediction record carries no usable result, or null when it does (or
+ * is still running, or failed with its own status). Covers records whose
+ * outputs are gone: an archived prediction comes back with an empty status
+ * (older API) or a completed status with no outputs and an error saying the
+ * outputs expired. The API's error text wins when it sent one.
+ */
+export function unavailableReason(item: HistoryItem): string | null {
+  const status = item.status ?? '';
+  if (status === 'completed') {
+    return !hasOutputs(item) && item.error ? item.error : null;
+  }
+  if (IN_PROGRESS_STATUSES.has(status) || FAILED_STATUSES.has(status)) return null;
+  if (item.error) return item.error;
+  return status
+    ? `Unexpected prediction status "${status}"; outputs are not available.`
+    : 'The outputs of this prediction have expired or are not available.';
 }
 
 export interface HistoryQuery {
@@ -278,8 +328,41 @@ async function fetchPredictionWithRetry(id: string, retryDelayMs: number): Promi
   }
 }
 
-export async function deletePredictions(ids: string[]): Promise<void> {
-  await apiPost('/api/v3/predictions/delete', { ids });
+// The API takes at most 100 ids per delete request.
+export const DELETE_BATCH_SIZE = 100;
+
+export interface DeleteResult {
+  /** Ids the server actually deleted. */
+  deleted_ids: string[];
+  /** Requested ids it did not delete: not this organization's, still running, or already gone. */
+  not_deleted_ids: string[];
+}
+
+/**
+ * Delete predictions in batches of 100. The server soft-deletes only the
+ * caller organization's predictions that are not running and returns the ids
+ * it deleted, so the result reports those, not the ids asked for. A failed
+ * batch throws with the result so far attached as `partial`.
+ */
+export async function deletePredictions(ids: string[]): Promise<DeleteResult> {
+  const unique = [...new Set(ids)];
+  const deleted: string[] = [];
+  for (let i = 0; i < unique.length; i += DELETE_BATCH_SIZE) {
+    const chunk = unique.slice(i, i + DELETE_BATCH_SIZE);
+    try {
+      const data = await apiPost<{ deleted_count?: number; deleted_ids?: string[] | null }>(
+        '/api/v3/predictions/delete',
+        { ids: chunk },
+      );
+      deleted.push(...(data?.deleted_ids ?? []));
+    } catch (err: any) {
+      const done = new Set(deleted);
+      err.partial = { deleted_ids: deleted, not_deleted_ids: unique.filter((id) => !done.has(id)) } as DeleteResult;
+      throw err;
+    }
+  }
+  const done = new Set(deleted);
+  return { deleted_ids: deleted, not_deleted_ids: unique.filter((id) => !done.has(id)) };
 }
 
 // Server-side prediction status enum (api-server internal/model/prediction.go).
@@ -304,6 +387,20 @@ export interface SubmitResult {
   model?: string;
 }
 
+// A submit is retried only on HTTP 429: the API's rate and concurrency
+// limiters answer it before any prediction exists, so a retry cannot create a
+// second task. Timeouts, network errors and 5xx are never retried — the task
+// may already exist and be billed.
+export const SUBMIT_429_RETRIES = 4;
+const SUBMIT_RETRY_MAX_DELAY_MS = 10_000;
+
+/** Wait before retry `attempt` (0-based): the server's Retry-After seconds when given, else 1s, 2s, 4s…; capped at 10s. */
+export function submitRetryDelayMs(retryAfter: string | undefined, attempt: number): number {
+  const seconds = retryAfter !== undefined && /^\s*\d+(\.\d+)?\s*$/.test(retryAfter) ? Number(retryAfter) : NaN;
+  const ms = Number.isFinite(seconds) ? seconds * 1000 : 1000 * 2 ** attempt;
+  return Math.min(ms, SUBMIT_RETRY_MAX_DELAY_MS);
+}
+
 /**
  * Submit a prediction WITHOUT waiting for it. Split from polling so the
  * caller can print the prediction ID the moment it exists — a Ctrl+C or
@@ -312,15 +409,35 @@ export interface SubmitResult {
 export async function submitPrediction(
   model: string,
   input: Record<string, unknown>,
-  opts: { sync?: boolean } = {},
+  opts: {
+    sync?: boolean;
+    /** Called before each 429 retry with the wait in ms. */
+    onRetry?: (attempt: number, delayMs: number) => void;
+    /** Test hook for the retry wait. */
+    sleep?: (ms: number) => Promise<void>;
+  } = {},
 ): Promise<SubmitResult> {
   const body: Record<string, unknown> = { ...input };
   if (opts.sync) body.enable_sync_mode = true;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await submitOnce(model, body, !!opts.sync);
+    } catch (err: any) {
+      if (err?.status !== 429 || attempt >= SUBMIT_429_RETRIES) throw err;
+      const delay = submitRetryDelayMs(err.retryAfter, attempt);
+      opts.onRetry?.(attempt + 1, delay);
+      await sleep(delay);
+    }
+  }
+}
+
+async function submitOnce(model: string, body: Record<string, unknown>, sync: boolean): Promise<SubmitResult> {
   // sync mode legitimately holds the request until the task finishes, so only
   // async submits get the per-request timeout.
   try {
     return await apiPost<SubmitResult>(`/api/v3/${model}`, body, {
-      timeoutMs: opts.sync ? undefined : SUBMIT_TIMEOUT_MS,
+      timeoutMs: sync ? undefined : SUBMIT_TIMEOUT_MS,
     });
   } catch (err: any) {
     // Never retried: the server may already have created (and billed) the task.
@@ -338,7 +455,8 @@ export type PollHandle = { cancel: () => void };
 /**
  * Poll a prediction until it reaches a terminal status. `onTick` fires each
  * round so the caller can keep a spinner honest. Transient status-read
- * failures are retried; submit is never retried.
+ * failures are retried. An empty or unknown status, or a completed record
+ * whose outputs are gone, ends polling with an error instead of looping.
  */
 export async function waitForPrediction(
   id: string,
@@ -348,8 +466,10 @@ export async function waitForPrediction(
   for (;;) {
     const item = await fetchPredictionWithRetry(id, opts.retryDelayMs ?? 1000);
     opts.onTick?.(item.status);
+    const unavailable = unavailableReason(item);
+    if (unavailable) throw new Error(`${unavailable} (task_id: ${id})`);
     if (item.status === 'completed') return item;
-    if (item.status === 'failed' || item.status === 'cancelled' || item.status === 'timeout' || item.status === 'deleted') {
+    if (FAILED_STATUSES.has(item.status)) {
       throw new Error(`Prediction ${item.status}${item.error ? `: ${item.error}` : ''} (task_id: ${id})`);
     }
     if (opts.signal?.cancelled) throw new Error(`cancelled (task_id: ${id})`);

@@ -97,6 +97,25 @@ describe('findUnknownInputs', () => {
     expect(r?.suggestions.size).toBe(0);
   });
 
+  it('always accepts the global request controls no schema declares', () => {
+    // The API keeps enable_sync_mode/enable_base64_output through its
+    // whitelist and reads enable_content_filter before stripping unknowns.
+    expect(
+      findUnknownInputs(
+        { prompt: 'x', enable_sync_mode: true, enable_base64_output: true, enable_content_filter: true },
+        model(['prompt']),
+      ),
+    ).toBeNull();
+    const r = findUnknownInputs({ prompt: 'x', enable_content_filter: true, zzz: 1 }, model(['prompt']));
+    expect(r?.unknown).toEqual(['zzz']);
+    expect(r?.known).toEqual(['prompt']);
+  });
+
+  it('suggests a global control for a near miss', () => {
+    const r = findUnknownInputs({ enable_sync_mod: true }, model(['prompt']));
+    expect(r?.suggestions.get('enable_sync_mod')).toBe('enable_sync_mode');
+  });
+
   it('passes when every key is declared', () => {
     expect(findUnknownInputs({ prompt: 'x' }, model(['prompt']))).toBeNull();
   });

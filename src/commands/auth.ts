@@ -37,9 +37,10 @@ async function readClipboardKey(): Promise<string | null> {
 async function validateKey(
   apiKey: string,
   baseUrl: string,
-): Promise<{ ok: boolean; status?: number; reason?: string }> {
+): Promise<{ ok: boolean; status?: number; reason?: string; unverified?: boolean }> {
   // The platform doesn't expose a dedicated /whoami yet, so we ping a known
-  // authenticated endpoint and treat anything that isn't 401/403 as "key works".
+  // authenticated endpoint: 2xx means "key works", 401/403 means rejected, and
+  // anything else (429, 5xx) means it could not be checked.
   // Note this proves the key is live, not that it can run models: /balance is
   // deliberately open to every key regardless of the creator's org role, so a
   // Billing-created key logs in here and only fails at `run`, which now
@@ -55,6 +56,16 @@ async function validateKey(
   }
   if (res.status === 401 || res.status === 403) {
     return { ok: false, status: res.status, reason: 'API rejected the key (401/403).' };
+  }
+  // Only a successful response proves the key. A 429 or 5xx says nothing
+  // about it, so the key is not stored as if it had been checked.
+  if (!res.ok) {
+    return {
+      ok: false,
+      status: res.status,
+      unverified: true,
+      reason: `Could not verify the key right now (${res.status} ${res.statusText || 'error'} from ${baseUrl}). Try again shortly.`,
+    };
   }
   return { ok: true, status: res.status };
 }
@@ -106,7 +117,7 @@ async function loginFlow(opts: { apiKey?: string; browser: boolean }): Promise<v
   if (!result.ok) {
     spinner.fail(result.reason ?? 'The key did not authenticate.');
     console.log();
-    console.log(chalk.gray('  Double-check at ') + chalk.cyan(KEY_URL));
+    if (!result.unverified) console.log(chalk.gray('  Double-check at ') + chalk.cyan(KEY_URL));
     console.log(chalk.gray('  Or set ') + chalk.cyan('WAVESPEED_API_KEY') + chalk.gray(' in your shell and skip login altogether.'));
     console.log();
     process.exit(1);

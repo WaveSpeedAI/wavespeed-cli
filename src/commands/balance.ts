@@ -35,7 +35,7 @@ export function registerBalance(program: Command): void {
       }
 
       console.log();
-      console.log(chalk.bold('Balance: ') + chalk.green(`$${balance}`));
+      console.log(chalk.bold('Balance: ') + chalk.green(`$${Number(balance).toFixed(2)}`));
       console.log(chalk.gray('Top up:  ') + chalk.cyan(TOPUP_URL));
       console.log();
 

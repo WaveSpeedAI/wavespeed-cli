@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
-import { fetchPrediction } from '../lib/api.js';
+import { fetchPrediction, inferenceMs, unavailableReason } from '../lib/api.js';
 import { downloadOutputs, printOutputs } from '../lib/output.js';
 import { downloadOptsFromFlag } from '../lib/download-flag.js';
 
@@ -54,18 +54,21 @@ export function registerShow(program: Command): void {
         }
 
         console.log();
-        console.log(chalk.bold('▶ ') + chalk.cyan(item.id));
-        console.log('  ' + chalk.gray('model:    ') + chalk.white(item.model));
-        console.log('  ' + chalk.gray('status:   ') + chalk.white(item.status));
-        console.log('  ' + chalk.gray('created:  ') + chalk.white(formatTime(item.created_at)));
-        if (item.executionTime !== undefined && item.executionTime > 0) {
-          console.log('  ' + chalk.gray('elapsed:  ') + chalk.white(`${item.executionTime}ms`));
-        }
+        console.log(chalk.bold('▶ ') + chalk.cyan(item.id || id));
+        console.log('  ' + chalk.gray('model:    ') + chalk.white(item.model || '-'));
+        console.log('  ' + chalk.gray('status:   ') + chalk.white(item.status || 'unavailable'));
+        if (item.created_at) console.log('  ' + chalk.gray('created:  ') + chalk.white(formatTime(item.created_at)));
+        const elapsed = inferenceMs(item);
+        if (elapsed !== undefined) console.log('  ' + chalk.gray('elapsed:  ') + chalk.white(`${elapsed}ms`));
         const promptText =
           (item.inputs?.prompt as string | undefined) ??
           (item.input?.prompt as string | undefined);
         if (promptText) console.log('  ' + chalk.gray('prompt:   ') + chalk.white(promptText));
+        // Archived records come back with no outputs (and, from older API
+        // versions, no status): say so instead of an unexplained blank.
+        const unavailable = unavailableReason(item);
         if (item.error) console.log('  ' + chalk.gray('error:    ') + chalk.red(item.error));
+        else if (unavailable) console.log('  ' + chalk.gray('note:     ') + chalk.yellow(unavailable));
 
         if (urls.length > 0) printOutputs(saved, urls);
         else console.log('\n  ' + chalk.gray('(no outputs)') + '\n');

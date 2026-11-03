@@ -1,5 +1,5 @@
 // The predictions-search API is strict RFC3339, so bare dates the CLI's own
-// hints suggest ("--since 2026-01-01") must be widened here, not rejected
+// hints suggest ("--since 2026-09-01") must be widened here, not rejected
 // there. Shared by history, billings, and usage so every time flag accepts
 // the same two forms: full ISO 8601 or YYYY-MM-DD.
 
