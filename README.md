@@ -137,7 +137,7 @@ The skill teaches the agent the shortcuts for images and videos (`generate`, `ed
 
 **OpenCode** loads the same file with no extra steps — `.claude/skills/` is on its skill search path. For the MCP tools as well, add the plugin to your OpenCode config — `"plugin": ["@wavespeed/opencode"]` — and run `opencode mcp auth wavespeed` ([WaveSpeedAI/wavespeed-opencode](https://github.com/WaveSpeedAI/wavespeed-opencode)).
 
-**Codex** reads `.agents/skills/`, which the same command writes. For a one-line install that also wires up the MCP server: `codex plugin marketplace add WaveSpeedAI/codex-plugin-wavespeed-cli` ([WaveSpeedAI/codex-plugin-wavespeed-cli](https://github.com/WaveSpeedAI/codex-plugin-wavespeed-cli)).
+**Codex** reads `.agents/skills/`, which the same command writes. For a one-line install that also wires up the MCP server: `codex plugin marketplace add WaveSpeedAI/codex-plugins` ([WaveSpeedAI/codex-plugins](https://github.com/WaveSpeedAI/codex-plugins)).
 
 **DeepSeek Harness (dsh)**: the same skill is packaged for dsh's `.dsh/skills` layout at [WaveSpeedAI/wavespeed-dsh-skill](https://github.com/WaveSpeedAI/wavespeed-dsh-skill).
 
