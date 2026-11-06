@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { fetchPricing, modelPlaygroundUrl } from '../lib/api.js';
 import { parseInputs } from '../lib/inputs.js';
-import { modelInputProps } from '../lib/validate-inputs.js';
+import { modelInputProps, unknownInputsFor } from '../lib/validate-inputs.js';
 import { resolveModelToken } from '../lib/config.js';
 import { collectLocalFiles, resolveLocalFiles } from '../lib/local-files.js';
 import { uploadWithCache } from '../lib/upload-cache.js';
@@ -17,6 +17,7 @@ export function registerPrice(program: Command): void {
     .option('-i, --input <pair...>', 'Inputs as key=value (same syntax as `wavespeed run`)', [])
     .option('-p, --prompt <text>', 'Shorthand for --input prompt=<text>')
     .option('--upload', 'Upload @file inputs first so media-based pricing is exact (quota applies; identical bytes cached 24h)')
+    .option('--no-validate', 'Skip checking the inputs against the model schema')
     .option('--json', 'Emit JSON')
     .action(async (modelArg: string, opts: any) => {
       const resolved = resolveModelToken(modelArg);
@@ -30,6 +31,28 @@ export function registerPrice(program: Command): void {
       let inputs: Record<string, unknown> = { ...(resolved.defaultInput ?? {}) };
       Object.assign(inputs, parseInputs(opts.input ?? []));
       if (opts.prompt) inputs.prompt = opts.prompt;
+
+      // A key the model does not declare is dropped by the pricer, so a typo would quote a price that ignores it.
+      if (opts.validate !== false) {
+        const report = await unknownInputsFor(resolved.model, inputs);
+        if (report) {
+          const msg =
+            `Model ${resolved.model} does not accept: ${report.unknown.join(', ')}. ` +
+            `Unknown inputs are ignored, so this quote would not account for them.`;
+          if (opts.json) {
+            process.stdout.write(JSON.stringify({ error: msg, unknown_inputs: report.unknown, accepted_inputs: report.known }, null, 2) + '\n');
+          } else {
+            console.error(chalk.red('Error: ') + `unknown input${report.unknown.length > 1 ? 's' : ''} for ` + chalk.cyan(resolved.model) + ':');
+            for (const k of report.unknown) {
+              const hint = report.suggestions.get(k);
+              console.error(chalk.yellow(`  ${k}` + (hint ? `  (did you mean \`${hint}\`?)` : '')));
+            }
+            console.error(chalk.gray('  Accepted inputs: ') + report.known.join(', '));
+            console.error(chalk.gray('  Bypass check:    ') + chalk.cyan('--no-validate'));
+          }
+          process.exit(1);
+        }
+      }
 
       // Pricing that depends on media (e.g. per-second video upscaling) is
       // measured server-side from the URL, so a local path is useless to the

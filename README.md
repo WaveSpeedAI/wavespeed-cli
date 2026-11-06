@@ -190,7 +190,8 @@ wavespeed skill install                  Drop SKILL.md for coding agents
 models bill from an input — audio/video duration, frame count, text length. Pass
 the same inputs you would pass to `wavespeed run`: a quote made without them can
 be lower than the real charge. The amount actually charged for a run is
-authoritative.
+authoritative. Like `run`, `price` refuses an input the model does not accept (a typo would
+otherwise be ignored by the quote); `--no-validate` skips the check.
 
 ## Auth
 
