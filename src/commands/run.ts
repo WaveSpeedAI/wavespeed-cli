@@ -6,8 +6,8 @@ import fs from 'node:fs';
 import { requireClient } from '../lib/client.js';
 import { parseInputs, withInputSyntaxHint } from '../lib/inputs.js';
 import { resolveLocalFiles } from '../lib/local-files.js';
-import { submitPrediction, waitForPrediction, SubmitResult } from '../lib/api.js';
-import { modelInputProps, unknownInputsFor } from '../lib/validate-inputs.js';
+import { fetchModels, submitPrediction, waitForPrediction, SubmitResult } from '../lib/api.js';
+import { findUnknownInputs, modelInputProps } from '../lib/validate-inputs.js';
 import { uploadWithCache } from '../lib/upload-cache.js';
 import { downloadOutputs, printOutputs } from '../lib/output.js';
 import { emitJson, emitJsonError, isJsonMode, log, setJsonMode } from '../lib/log.js';
@@ -118,26 +118,39 @@ export function registerRun(program: Command): void {
       // avoid stale-cache false positives, re-fetches the catalog once
       // before rejecting.
       if (opts.validate !== false) {
-        const report = await unknownInputsFor(model, input);
-        if (report) {
-          const lines = report.unknown.map((k) => {
-            const hint = report.suggestions.get(k);
-            return `  ${k}` + (hint ? `  (did you mean \`${hint}\`?)` : '');
-          });
-          const msg =
-            `Model ${model} does not accept: ${report.unknown.join(', ')}. ` +
-            `The API silently drops unknown inputs, so this would bill a run that ignores them.`;
-          if (isJsonMode()) {
-            emitJsonError(msg, { unknown_inputs: report.unknown, accepted_inputs: report.known });
-          } else {
-            console.error(chalk.red('Error: ') + `unknown input${report.unknown.length > 1 ? 's' : ''} for ` + chalk.cyan(model) + ':');
-            for (const l of lines) console.error(chalk.yellow(l));
-            console.error(chalk.gray('  The API silently drops unknown inputs — the run would be billed with them ignored.'));
-            console.error(chalk.gray('  Accepted inputs: ') + report.known.join(', '));
-            console.error(chalk.gray('  Full schema:     ') + chalk.cyan(`wavespeed schema ${model}`));
-            console.error(chalk.gray('  Bypass check:    ') + chalk.cyan('--no-validate'));
+        try {
+          let { models } = await fetchModels();
+          let found = models.find((m) => m.model_id === model);
+          let report = findUnknownInputs(input, found);
+          if (report) {
+            ({ models } = await fetchModels({ refresh: true }));
+            found = models.find((m) => m.model_id === model);
+            report = findUnknownInputs(input, found);
           }
-          process.exit(1);
+          if (report) {
+            const lines = report.unknown.map((k) => {
+              const hint = report!.suggestions.get(k);
+              return `  ${k}` + (hint ? `  (did you mean \`${hint}\`?)` : '');
+            });
+            const msg =
+              `Model ${model} does not accept: ${report.unknown.join(', ')}. ` +
+              `The API silently drops unknown inputs, so this would bill a run that ignores them.`;
+            if (isJsonMode()) {
+              emitJsonError(msg, { unknown_inputs: report.unknown, accepted_inputs: report.known });
+            } else {
+              console.error(chalk.red('Error: ') + `unknown input${report.unknown.length > 1 ? 's' : ''} for ` + chalk.cyan(model) + ':');
+              for (const l of lines) console.error(chalk.yellow(l));
+              console.error(chalk.gray('  The API silently drops unknown inputs — the run would be billed with them ignored.'));
+              console.error(chalk.gray('  Accepted inputs: ') + report.known.join(', '));
+              console.error(chalk.gray('  Full schema:     ') + chalk.cyan(`wavespeed schema ${model}`));
+              console.error(chalk.gray('  Bypass check:    ') + chalk.cyan('--no-validate'));
+            }
+            process.exit(1);
+          }
+        } catch {
+          // Catalog unreachable — validation is best-effort, never a blocker.
+          // (The unknown-input rejection above exits the process directly and
+          // is not routed through here.)
         }
       }
 
