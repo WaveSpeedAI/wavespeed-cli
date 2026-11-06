@@ -123,3 +123,22 @@ export function findUnknownInputs(
   }
   return { unknown, known, suggestions };
 }
+
+/**
+ * Inputs the model's schema does not declare, checked against the live catalog. The API silently drops unknown
+ * keys, so a typo bills a run (or quotes a price) that ignores it. Fails open: null when the catalog has no schema
+ * or cannot be reached; re-fetches once before reporting, so a stale cache cannot block a valid input.
+ */
+export async function unknownInputsFor(model: string, input: Record<string, unknown>): Promise<UnknownKeyReport | null> {
+  try {
+    let { models } = await fetchModels();
+    let report = findUnknownInputs(input, models.find((m) => m.model_id === model));
+    if (report) {
+      ({ models } = await fetchModels({ refresh: true }));
+      report = findUnknownInputs(input, models.find((m) => m.model_id === model));
+    }
+    return report;
+  } catch {
+    return null;
+  }
+}
