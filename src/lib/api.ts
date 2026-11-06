@@ -216,7 +216,7 @@ export async function fetchPricing(
 ): Promise<ModelPrice> {
   // /model/price is the documented pricing endpoint; /model/pricing is a
   // legacy contract kept for old clients and absent from the public docs.
-  return apiPost('/api/v3/model/price', { model_id: modelId, inputs });
+  return apiPost('/api/v3/model/price', { model_id: modelId, input: inputs });
 }
 
 export interface HistoryItem {
