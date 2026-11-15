@@ -287,6 +287,39 @@ describe('planVideo', () => {
     expect(extend.input).toMatchObject({ video: 'https://x/v.mp4', last_image: 'https://x/e.png', duration: 6 });
   });
 
+  it('skips the default Flash model when the request names a resolution it lacks, and does not trim it', async () => {
+    const plan = await planVideo({ prompt: 'p', resolution: '1080p' }, 'generate', VIDEO_CATALOG);
+    expect(plan.modelId).toBe('bytedance/seedance-2.5/text-to-video');
+    expect(plan.input).toMatchObject({ resolution: '1080p' });
+    expect(plan.notes).toEqual([]);
+  });
+
+  it('skips the default Flash model when there is more reference media than it takes', async () => {
+    const images = Array.from({ length: 11 }, (_, i) => `https://x/${i}.png`);
+    const plan = await planVideo({ prompt: 'p', reference_images: images }, 'generate', VIDEO_CATALOG);
+    expect(plan.modelId).toBe('bytedance/seedance-2.5/reference-to-video');
+    expect(plan.input.reference_images).toEqual(images);
+    const videos = Array.from({ length: 6 }, (_, i) => `https://x/${i}.mp4`);
+    expect((await planVideo({ prompt: 'p', reference_videos: videos }, 'generate', VIDEO_CATALOG)).modelId).toBe('bytedance/seedance-2.5/reference-to-video');
+    const audios = Array.from({ length: 6 }, (_, i) => `https://x/${i}.mp3`);
+    // The fixture's Seedance 2.5 takes no audio references, so the first model after Flash that does takes over.
+    expect((await planVideo({ prompt: 'p', reference_audios: audios }, 'generate', VIDEO_CATALOG)).modelId).toBe('alibaba/wan-3.0/reference-to-video');
+  });
+
+  it('keeps Flash at its limits and when the resolution is one it offers', async () => {
+    const images = Array.from({ length: 10 }, (_, i) => `https://x/${i}.png`);
+    const plan = await planVideo({ prompt: 'p', resolution: '480p', reference_images: images }, 'generate', VIDEO_CATALOG);
+    expect(plan.modelId).toBe('bytedance/seedance-2.5-flash/reference-to-video');
+    expect(plan.input).toMatchObject({ resolution: '480p' });
+  });
+
+  it('fits a named Flash model to its limits and says so, as for every named model', async () => {
+    const plan = await planVideo({ prompt: 'p', model: 'seedance-2.5-flash', resolution: '1080p' }, 'generate', VIDEO_CATALOG);
+    expect(plan.modelId).toBe('bytedance/seedance-2.5-flash/text-to-video');
+    expect(plan.input).toMatchObject({ resolution: '720p' });
+    expect(plan.notes).toEqual(['resolution 1080p is not offered by bytedance/seedance-2.5-flash/text-to-video; used 720p.']);
+  });
+
   it('cannot extend on Flash when it is named', async () => {
     await expect(planVideo({ prompt: 'p', model: 'seedance-2.5-flash', video: 'https://x/v.mp4' }, 'extend', VIDEO_CATALOG)).rejects.toThrow('cannot extend');
   });
