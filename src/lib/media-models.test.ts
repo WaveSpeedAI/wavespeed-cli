@@ -38,8 +38,9 @@ describe('media models', () => {
       image: 'bytedance/seedance-2.5-flash/image-to-video',
       reference: 'bytedance/seedance-2.5-flash/reference-to-video',
       edit: 'bytedance/seedance-2.5-flash/video-edit',
+      extend: 'bytedance/seedance-2.5-flash/video-extend',
     });
-    // Flash has no extend endpoint; its turbo tier is the -turbo suffix on the same prefix, at 720p / 1080p.
+    // Flash extends; its turbo tier has no extend endpoint and is the -turbo suffix on the same prefix, at 720p / 1080p.
     expect(videoEndpoints(VIDEO_MODELS['seedance-2.5-flash-turbo'])).toEqual({
       text: 'bytedance/seedance-2.5-flash/text-to-video-turbo',
       image: 'bytedance/seedance-2.5-flash/image-to-video-turbo',

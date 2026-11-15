@@ -187,7 +187,7 @@ const video = (extra: Record<string, Prop> = {}): Record<string, Prop> => ({
 });
 
 // Seedance 2.5 Flash as the live schemas have it: 480p to 4k (1080p / 4k upscaled; the turbo tier 720p / 1080p), 4-30 s, up to
-// 10 images, 5 videos and 5 audios; no extend.
+// 10 images, 5 videos and 5 audios; the standard tier extends (no end image), the turbo tier does not.
 const flash = (extra: Record<string, Prop> = {}, resolutions = ['480p', '720p', '1080p', '4k']): Record<string, Prop> => ({
   ...video(extra),
   duration: { type: 'integer', minimum: 4, maximum: 30, default: 5 },
@@ -202,6 +202,7 @@ const VIDEO_CATALOG = catalog({
   'bytedance/seedance-2.5-flash/reference-to-video': flash({ reference_images: list(10), reference_videos: list(5), reference_audios: list(5) }),
   'bytedance/seedance-2.5-flash/image-to-video': flash({ image: str, last_image: str }),
   'bytedance/seedance-2.5-flash/video-edit': flash({ video: str, reference_images: list(10), reference_audios: list(5) }),
+  'bytedance/seedance-2.5-flash/video-extend': flash({ video: str }),
   'bytedance/seedance-2.5/text-to-video': video({ reference_images: list(30), reference_videos: list(10) }),
   // The fixture's Seedance takes no audio references, so audio still moves to another model.
   'bytedance/seedance-2.5/reference-to-video': video({ reference_images: list(30), reference_videos: list(10) }),
@@ -267,9 +268,15 @@ describe('planVideo', () => {
     expect(plan.notes).toEqual([]);
   });
 
-  it('moves to another model when the default cannot take the inputs, and says so', async () => {
-    // Flash has no extend endpoint: the first model in the /chat order that has one takes over.
+  it('keeps an unnamed extend on Flash, which has the extend endpoint', async () => {
     const plan = await planVideo({ prompt: 'p', video: 'https://x/v.mp4' }, 'extend', VIDEO_CATALOG);
+    expect(plan.modelId).toBe('bytedance/seedance-2.5-flash/video-extend');
+    expect(plan.label).toBe('Seedance 2.5 Flash');
+  });
+
+  it('moves to another model when the default cannot take the inputs, and says so', async () => {
+    // Flash's extend takes no end image: the first model in the /chat order whose extend does takes over.
+    const plan = await planVideo({ prompt: 'p', video: 'https://x/v.mp4', last_frame: 'https://x/e.png' }, 'extend', VIDEO_CATALOG);
     expect(plan.modelId).toBe('bytedance/seedance-2.5/video-extend');
     expect(plan.label).toBe('Seedance 2.5');
   });
@@ -333,8 +340,12 @@ describe('planVideo', () => {
     expect(plan.notes).toEqual(['duration 40 is not offered by bytedance/seedance-2.5-flash/text-to-video; used 30.']);
   });
 
-  it('cannot extend on Flash when it is named', async () => {
-    await expect(planVideo({ prompt: 'p', model: 'seedance-2.5-flash', video: 'https://x/v.mp4' }, 'extend', VIDEO_CATALOG)).rejects.toThrow('cannot extend');
+  it('extends on Flash when it is named, and not on its turbo tier', async () => {
+    const plan = await planVideo({ prompt: 'p', model: 'seedance-2.5-flash', video: 'https://x/v.mp4', resolution: '4k' }, 'extend', VIDEO_CATALOG);
+    expect(plan.modelId).toBe('bytedance/seedance-2.5-flash/video-extend');
+    expect(plan.input).toMatchObject({ video: 'https://x/v.mp4', resolution: '4k' });
+    // The turbo tier has no extend endpoint: the error names the default, which can.
+    await expect(planVideo({ prompt: 'p', model: 'seedance-2.5-flash-turbo', video: 'https://x/v.mp4' }, 'extend', VIDEO_CATALOG)).rejects.toThrow(/cannot extend.*seedance-2.5-flash/);
   });
 
   it('cannot extend on a turbo model', async () => {
