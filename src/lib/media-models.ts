@@ -52,6 +52,7 @@ export function findImageModel(id: string | undefined): ImageModel {
 // ------------------------------------------------------------------ videos
 
 export type VideoModelKey =
+  | 'seedance-2.5-flash'
   | 'seedance-2.5'
   | 'seedance-2.5-turbo'
   | 'seedance-2.0'
@@ -95,6 +96,12 @@ const seedance = (id: VideoModelKey, label: string, base: string, turbo: boolean
   durations: v25 ? [4, 30] : [4, 15], aspectRatios: SEEDANCE_ASPECTS, audio: true,
   maxRefs: v25 ? { images: 30, videos: 10, audios: 10 } : { images: 9, videos: 3, audios: 3 },
 })
+// Flash generates natively at 480p / 720p; it has no turbo or extend endpoint, and takes fewer references than 2.5.
+const seedanceFlash = (): VideoModel => ({
+  id: 'seedance-2.5-flash', label: 'Seedance 2.5 Flash', family: 'seedance-2.5', base: 'bytedance/seedance-2.5-flash', turbo: false,
+  modes: ['generate', 'edit'], resolutions: ['480p', '720p'], defaultResolution: '720p',
+  durations: [4, 30], aspectRatios: SEEDANCE_ASPECTS, audio: true, maxRefs: { images: 10, videos: 5, audios: 5 },
+})
 const wan = (id: VideoModelKey, label: string, base: string): VideoModel => ({
   id, label, family: 'wan-3.0', base, turbo: false, modes: ['generate', 'edit', 'extend'],
   resolutions: ['480p', '720p', '1080p'], defaultResolution: '720p', durations: [2, 30],
@@ -103,6 +110,7 @@ const wan = (id: VideoModelKey, label: string, base: string): VideoModel => ({
 
 /** In menu order; the first is the default. */
 export const VIDEO_MODELS: Record<VideoModelKey, VideoModel> = {
+  'seedance-2.5-flash': seedanceFlash(),
   'seedance-2.5': seedance('seedance-2.5', 'Seedance 2.5', 'bytedance/seedance-2.5', false, true),
   'seedance-2.5-turbo': seedance('seedance-2.5-turbo', 'Seedance 2.5 Turbo', 'bytedance/seedance-2.5', true, true),
   'seedance-2.0': seedance('seedance-2.0', 'Seedance 2.0', 'bytedance/seedance-2.0', false, false),
