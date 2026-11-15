@@ -15,7 +15,8 @@ describe('media models', () => {
     expect(DEFAULT_IMAGE_MODEL).toBe('seedream-5-5');
     expect(DEFAULT_VIDEO_MODEL).toBe('seedance-2.5-flash');
     expect(IMAGE_MODEL_KEYS).toEqual(['seedream-5-5', 'seedream-5-pro', 'nano-banana-2.1', 'nano-banana-2', 'nano-banana-pro', 'gpt-image-2.6', 'gpt-image-2.5', 'gpt-image-2']);
-    expect(VIDEO_MODEL_KEYS).toHaveLength(12);
+    expect(VIDEO_MODEL_KEYS).toHaveLength(13);
+    expect(VIDEO_MODEL_KEYS.slice(0, 4)).toEqual(['seedance-2.5-flash', 'seedance-2.5-flash-turbo', 'seedance-2.5', 'seedance-2.5-turbo']);
   });
 
   it('names the endpoints each model runs on', () => {
@@ -38,6 +39,15 @@ describe('media models', () => {
       reference: 'bytedance/seedance-2.5-flash/reference-to-video',
       edit: 'bytedance/seedance-2.5-flash/video-edit',
     });
+    // Flash has no extend endpoint; its turbo tier is the -turbo suffix on the same prefix, at 720p / 1080p.
+    expect(videoEndpoints(VIDEO_MODELS['seedance-2.5-flash-turbo'])).toEqual({
+      text: 'bytedance/seedance-2.5-flash/text-to-video-turbo',
+      image: 'bytedance/seedance-2.5-flash/image-to-video-turbo',
+      reference: 'bytedance/seedance-2.5-flash/reference-to-video-turbo',
+      edit: 'bytedance/seedance-2.5-flash/video-edit-turbo',
+    });
+    expect(VIDEO_MODELS['seedance-2.5-flash'].resolutions).toEqual(['480p', '720p', '1080p', '4k']);
+    expect(VIDEO_MODELS['seedance-2.5-flash-turbo'].resolutions).toEqual(['720p', '1080p']);
     expect(videoEndpoints(VIDEO_MODELS['minimax-h3']).reference).toBe('wavespeed-ai/minimax-h3/reference-to-video');
     expect(videoEndpoints(VIDEO_MODELS['seedance-2.0']).reference).toBe('bytedance/seedance-2.0/reference-to-video');
   });

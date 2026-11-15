@@ -34,9 +34,9 @@ They use the same models as the WaveSpeed /chat page and pick the endpoint (text
 | | Default | Alternatives (`-m` / `model`) |
 |---|---|---|
 | Image | `seedream-5-5` (Seedream 5.5) | `seedream-5-pro`, `gpt-image-2.6` (GPT Image 2.6, the model behind ChatGPT Images 2.6; strong at text and photorealism), `gpt-image-2.5`, `nano-banana-2.1`, `nano-banana-pro`, `nano-banana-2`, `gpt-image-2` |
-| Video | `seedance-2.5-flash` (Seedance 2.5 Flash: 480p / 720p, no extend) | `seedance-2.5`, `seedance-2.5-turbo`, `kling-4.0`, `wan-3.0`, `wan-3.0-prime`, `minimax-h3` (cheap and fast, native stereo audio; defaults to 768p, its counterpart of 720p), older Seedance 2.0 tiers |
+| Video | `seedance-2.5-flash` (Seedance 2.5 Flash: 480p to 4k, 1080p and 4k upscaled, no extend), `seedance-2.5-flash-turbo` (720p / 1080p) | `seedance-2.5`, `seedance-2.5-turbo`, `kling-4.0`, `wan-3.0`, `wan-3.0-prime`, `minimax-h3` (cheap and fast, native stereo audio; defaults to 768p, its counterpart of 720p), older Seedance 2.0 tiers |
 
-Video resolution is 720p unless the user asks for another (MiniMax H3: 768p). Offer 480p for a cheaper draft.
+Video resolution is 720p unless the user asks for another (MiniMax H3: 768p). Offer 480p for a cheaper draft. Seedance 2.5 Flash is asked for 1080p or 4k like any other model; it makes 720p natively and upscales above that.
 
 ## Everything else: the generic run
 

@@ -186,14 +186,18 @@ const video = (extra: Record<string, Prop> = {}): Record<string, Prop> => ({
   ...extra,
 });
 
-// Seedance 2.5 Flash as the live schemas have it: 480p / 720p, 4-30 s, up to 10 images, 5 videos and 5 audios; no extend.
-const flash = (extra: Record<string, Prop> = {}): Record<string, Prop> => ({
+// Seedance 2.5 Flash as the live schemas have it: 480p to 4k (1080p / 4k upscaled; the turbo tier 720p / 1080p), 4-30 s, up to
+// 10 images, 5 videos and 5 audios; no extend.
+const flash = (extra: Record<string, Prop> = {}, resolutions = ['480p', '720p', '1080p', '4k']): Record<string, Prop> => ({
   ...video(extra),
   duration: { type: 'integer', minimum: 4, maximum: 30, default: 5 },
-  resolution: { type: 'string', enum: ['480p', '720p'], default: '720p' },
+  resolution: { type: 'string', enum: resolutions, default: '720p' },
 });
+const flashTurbo = (extra: Record<string, Prop> = {}) => flash(extra, ['720p', '1080p']);
 
 const VIDEO_CATALOG = catalog({
+  'bytedance/seedance-2.5-flash/text-to-video-turbo': flashTurbo({ reference_images: list(10), reference_videos: list(5), reference_audios: list(5) }),
+  'bytedance/seedance-2.5-flash/reference-to-video-turbo': flashTurbo({ reference_images: list(10), reference_videos: list(5), reference_audios: list(5) }),
   'bytedance/seedance-2.5-flash/text-to-video': flash({ reference_images: list(10), reference_videos: list(5), reference_audios: list(5) }),
   'bytedance/seedance-2.5-flash/reference-to-video': flash({ reference_images: list(10), reference_videos: list(5), reference_audios: list(5) }),
   'bytedance/seedance-2.5-flash/image-to-video': flash({ image: str, last_image: str }),
@@ -287,11 +291,13 @@ describe('planVideo', () => {
     expect(extend.input).toMatchObject({ video: 'https://x/v.mp4', last_image: 'https://x/e.png', duration: 6 });
   });
 
-  it('skips the default Flash model when the request names a resolution it lacks, and does not trim it', async () => {
-    const plan = await planVideo({ prompt: 'p', resolution: '1080p' }, 'generate', VIDEO_CATALOG);
-    expect(plan.modelId).toBe('bytedance/seedance-2.5/text-to-video');
-    expect(plan.input).toMatchObject({ resolution: '1080p' });
-    expect(plan.notes).toEqual([]);
+  it('keeps an unnamed 1080p or 4k request on Flash, which offers them, and never on its turbo tier', async () => {
+    for (const resolution of ['480p', '720p', '1080p', '4k']) {
+      const plan = await planVideo({ prompt: 'p', resolution }, 'generate', VIDEO_CATALOG);
+      expect(plan.modelId).toBe('bytedance/seedance-2.5-flash/text-to-video');
+      expect(plan.input).toMatchObject({ resolution });
+      expect(plan.notes).toEqual([]);
+    }
   });
 
   it('skips the default Flash model when there is more reference media than it takes', async () => {
@@ -306,6 +312,13 @@ describe('planVideo', () => {
     expect((await planVideo({ prompt: 'p', reference_audios: audios }, 'generate', VIDEO_CATALOG)).modelId).toBe('alibaba/wan-3.0/reference-to-video');
   });
 
+  it('uses the turbo tier only when it is named, at its own resolutions', async () => {
+    const plan = await planVideo({ prompt: 'p', model: 'seedance-2.5-flash-turbo', resolution: '4k' }, 'generate', VIDEO_CATALOG);
+    expect(plan.modelId).toBe('bytedance/seedance-2.5-flash/text-to-video-turbo');
+    expect(plan.input).toMatchObject({ resolution: '1080p' });
+    expect(plan.notes[0]).toContain('used 1080p');
+  });
+
   it('keeps Flash at its limits and when the resolution is one it offers', async () => {
     const images = Array.from({ length: 10 }, (_, i) => `https://x/${i}.png`);
     const plan = await planVideo({ prompt: 'p', resolution: '480p', reference_images: images }, 'generate', VIDEO_CATALOG);
@@ -314,10 +327,10 @@ describe('planVideo', () => {
   });
 
   it('fits a named Flash model to its limits and says so, as for every named model', async () => {
-    const plan = await planVideo({ prompt: 'p', model: 'seedance-2.5-flash', resolution: '1080p' }, 'generate', VIDEO_CATALOG);
+    const plan = await planVideo({ prompt: 'p', model: 'seedance-2.5-flash', duration: 40 }, 'generate', VIDEO_CATALOG);
     expect(plan.modelId).toBe('bytedance/seedance-2.5-flash/text-to-video');
-    expect(plan.input).toMatchObject({ resolution: '720p' });
-    expect(plan.notes).toEqual(['resolution 1080p is not offered by bytedance/seedance-2.5-flash/text-to-video; used 720p.']);
+    expect(plan.input).toMatchObject({ duration: 30 });
+    expect(plan.notes).toEqual(['duration 40 is not offered by bytedance/seedance-2.5-flash/text-to-video; used 30.']);
   });
 
   it('cannot extend on Flash when it is named', async () => {
