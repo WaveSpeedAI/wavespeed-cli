@@ -242,6 +242,11 @@ export function inferenceMs(item: Pick<HistoryItem, 'timings'>): number | undefi
 const IN_PROGRESS_STATUSES = new Set(['created', 'processing']);
 const FAILED_STATUSES = new Set(['failed', 'cancelled', 'timeout', 'deleted']);
 
+/** True while the run is still going; any other status is final. */
+export function isInProgress(status: string | undefined): boolean {
+  return IN_PROGRESS_STATUSES.has(status ?? '');
+}
+
 function hasOutputs(item: HistoryItem): boolean {
   return Array.isArray(item.outputs) && item.outputs.length > 0;
 }
@@ -305,7 +310,7 @@ function isTransient(err: any): boolean {
   return err instanceof TypeError || err?.name === 'TimeoutError' || err?.name === 'AbortError';
 }
 
-async function fetchPredictionWithRetry(id: string, retryDelayMs: number): Promise<HistoryItem> {
+export async function fetchPredictionWithRetry(id: string, retryDelayMs: number): Promise<HistoryItem> {
   for (let attempt = 0; ; attempt++) {
     try {
       return await fetchPrediction(id);

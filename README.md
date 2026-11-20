@@ -178,6 +178,7 @@ wavespeed price <model> -i k=v           Estimate the cost of a run (no charge)
 wavespeed top-up                         Open https://wavespeed.ai/top-up
 wavespeed history [--limit --status …]   List recent predictions (last 24h)
 wavespeed show <id>                      Full details for a past prediction
+wavespeed wait <id>                      Wait for a prediction to finish, then show it
 wavespeed delete <id...>                 Remove predictions from your history
 
 # misc

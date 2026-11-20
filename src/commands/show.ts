@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
-import { fetchPrediction, inferenceMs, unavailableReason } from '../lib/api.js';
+import { fetchPrediction, inferenceMs, unavailableReason, type HistoryItem } from '../lib/api.js';
 import { downloadOutputs, printOutputs } from '../lib/output.js';
 import { downloadOptsFromFlag } from '../lib/download-flag.js';
 
@@ -11,6 +11,59 @@ function formatTime(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+/**
+ * Print a prediction record (or emit it as JSON with `--json`), downloading its
+ * outputs first when `--download` was given. Shared by `show` and `wait`;
+ * `extra` is merged into the JSON output.
+ */
+export async function renderPrediction(item: HistoryItem, id: string, opts: any, extra: Record<string, unknown> = {}): Promise<void> {
+  const urls: string[] = Array.isArray(item.outputs)
+    ? item.outputs.filter((o): o is string => typeof o === 'string')
+    : [];
+
+  let saved: string[] = [];
+  const dlOpts = downloadOptsFromFlag(opts.download, {
+    model: item.model,
+    prompt:
+      typeof item.inputs?.prompt === 'string'
+        ? (item.inputs.prompt as string)
+        : typeof item.input?.prompt === 'string'
+          ? (item.input.prompt as string)
+          : undefined,
+    outputDir: opts.outputDir,
+  });
+  if (urls.length > 0 && dlOpts) {
+    const dl = !opts.json ? ora('Downloading…').start() : null;
+    saved = await downloadOutputs(urls, dlOpts);
+    dl?.succeed(`Saved ${saved.length} file${saved.length > 1 ? 's' : ''}.`);
+  }
+
+  if (opts.json) {
+    process.stdout.write(JSON.stringify({ ...item, ...extra, saved }, null, 2) + '\n');
+    return;
+  }
+
+  console.log();
+  console.log(chalk.bold('▶ ') + chalk.cyan(item.id || id));
+  console.log('  ' + chalk.gray('model:    ') + chalk.white(item.model || '-'));
+  console.log('  ' + chalk.gray('status:   ') + chalk.white(item.status || 'unavailable'));
+  if (item.created_at) console.log('  ' + chalk.gray('created:  ') + chalk.white(formatTime(item.created_at)));
+  const elapsed = inferenceMs(item);
+  if (elapsed !== undefined) console.log('  ' + chalk.gray('elapsed:  ') + chalk.white(`${elapsed}ms`));
+  const promptText =
+    (item.inputs?.prompt as string | undefined) ??
+    (item.input?.prompt as string | undefined);
+  if (promptText) console.log('  ' + chalk.gray('prompt:   ') + chalk.white(promptText));
+  // Archived records come back with no outputs (and, from older API
+  // versions, no status): say so instead of an unexplained blank.
+  const unavailable = unavailableReason(item);
+  if (item.error) console.log('  ' + chalk.gray('error:    ') + chalk.red(item.error));
+  else if (unavailable) console.log('  ' + chalk.gray('note:     ') + chalk.yellow(unavailable));
+
+  if (urls.length > 0) printOutputs(saved, urls);
+  else console.log('\n  ' + chalk.gray('(no outputs)') + '\n');
 }
 
 export function registerShow(program: Command): void {
@@ -26,52 +79,7 @@ export function registerShow(program: Command): void {
       try {
         const item = await fetchPrediction(id);
         spinner?.stop();
-
-        const urls: string[] = Array.isArray(item.outputs)
-          ? item.outputs.filter((o): o is string => typeof o === 'string')
-          : [];
-
-        let saved: string[] = [];
-        const dlOpts = downloadOptsFromFlag(opts.download, {
-          model: item.model,
-          prompt:
-            typeof item.inputs?.prompt === 'string'
-              ? (item.inputs.prompt as string)
-              : typeof item.input?.prompt === 'string'
-                ? (item.input.prompt as string)
-                : undefined,
-          outputDir: opts.outputDir,
-        });
-        if (urls.length > 0 && dlOpts) {
-          const dl = !opts.json ? ora('Downloading…').start() : null;
-          saved = await downloadOutputs(urls, dlOpts);
-          dl?.succeed(`Saved ${saved.length} file${saved.length > 1 ? 's' : ''}.`);
-        }
-
-        if (opts.json) {
-          process.stdout.write(JSON.stringify({ ...item, saved }, null, 2) + '\n');
-          return;
-        }
-
-        console.log();
-        console.log(chalk.bold('▶ ') + chalk.cyan(item.id || id));
-        console.log('  ' + chalk.gray('model:    ') + chalk.white(item.model || '-'));
-        console.log('  ' + chalk.gray('status:   ') + chalk.white(item.status || 'unavailable'));
-        if (item.created_at) console.log('  ' + chalk.gray('created:  ') + chalk.white(formatTime(item.created_at)));
-        const elapsed = inferenceMs(item);
-        if (elapsed !== undefined) console.log('  ' + chalk.gray('elapsed:  ') + chalk.white(`${elapsed}ms`));
-        const promptText =
-          (item.inputs?.prompt as string | undefined) ??
-          (item.input?.prompt as string | undefined);
-        if (promptText) console.log('  ' + chalk.gray('prompt:   ') + chalk.white(promptText));
-        // Archived records come back with no outputs (and, from older API
-        // versions, no status): say so instead of an unexplained blank.
-        const unavailable = unavailableReason(item);
-        if (item.error) console.log('  ' + chalk.gray('error:    ') + chalk.red(item.error));
-        else if (unavailable) console.log('  ' + chalk.gray('note:     ') + chalk.yellow(unavailable));
-
-        if (urls.length > 0) printOutputs(saved, urls);
-        else console.log('\n  ' + chalk.gray('(no outputs)') + '\n');
+        await renderPrediction(item, id, opts);
       } catch (err: any) {
         spinner?.fail(err.message ?? String(err));
         if (opts.json) {
