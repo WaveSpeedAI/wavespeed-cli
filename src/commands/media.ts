@@ -156,7 +156,7 @@ export function registerMedia(program: Command): void {
   const videoOpts = (c: Command) =>
     c
       .option('--duration <s>', 'Seconds', (v) => parseInt(v, 10))
-      .option('--resolution <r>', '480p, 540p, 720p, 768p or 1080p (MiniMax H3 maps 720p to 768p)')
+      .option('--resolution <r>', '480p, 540p, 720p, 768p, 1080p or 4k (MiniMax H3 maps 720p to 768p)')
       .option('--aspect-ratio <r>', '16:9, 9:16, 1:1, 4:3, 3:4, 21:9');
   const videoRest = (o: any) => ({ duration: o.duration, resolution: o.resolution, aspect_ratio: o.aspectRatio });
 
