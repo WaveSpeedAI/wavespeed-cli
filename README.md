@@ -121,7 +121,7 @@ wavespeed extend video "the camera keeps rising" --video @./clip.mp4 --json
 | | Default | Alternatives (`-m`) |
 |---|---|---|
 | Image | `seedream-5-5` | `seedream-5-pro`, `gpt-image-2.6`, `gpt-image-2.5`, `nano-banana-2.1`, `nano-banana-pro`, `nano-banana-2`, `gpt-image-2` |
-| Video | `seedance-2.5` | `seedance-2.5-turbo`, `seedance-2.5-flash` (cheaper and faster), `seedance-2.5-flash-turbo`, `kling-4.0`, `wan-3.0`, `wan-3.0-prime`, `minimax-h3` (cheap and fast, native stereo audio, 768p by default), Seedance 2.0 tiers |
+| Video | `wan-3.0` | `wan-3.0-prime`, `seedance-2.5`, `seedance-2.5-turbo`, `seedance-2.5-flash` (cheaper and faster), `seedance-2.5-flash-turbo`, `kling-4.0`, `minimax-h3` (cheap and fast, native stereo audio, 768p by default), Seedance 2.0 tiers |
 
 For everything else (audio, 3D, upscaling, a specific endpoint), find the model with `wavespeed models <query>` and call it with `wavespeed run <model-id>`.
 
