@@ -143,14 +143,14 @@ export function registerMedia(program: Command): void {
     .description('Create an image; with --image, use the pictures as subject/product/face/style')
     .option('--image <ref...>', 'Reference image URL or @path (repeatable)', collect, [])
     .option('--aspect-ratio <r>', 'e.g. 1:1, 16:9, 9:16 (snapped to what the model supports)')
-    .option('--resolution <r>', '1k, 2k or 4k')
+    .option('--resolution <r>', '0.5k, 1k, 1.5k, 2k, 3k or 4k (the closest size the model offers is used)')
     .action((prompt, o) => execute(prompt, o, (a) => planImage(a as any, catalogProps), { reference_images: o.image }, { aspect_ratio: o.aspectRatio, resolution: o.resolution }));
 
   addCommon(edit.command('image'), IMAGE_MODEL_KEYS)
     .description('Change existing images: edits, restyles, backgrounds, combining several')
     .requiredOption('--image <ref...>', 'Image URL or @path to edit (repeatable)', collect, [])
     .option('--aspect-ratio <r>', 'e.g. 1:1, 16:9, 9:16')
-    .option('--resolution <r>', '1k, 2k or 4k')
+    .option('--resolution <r>', '0.5k, 1k, 1.5k, 2k, 3k or 4k (the closest size the model offers is used)')
     .action((prompt, o) => execute(prompt, o, (a) => planImage(a as any, catalogProps), { images: o.image }, { aspect_ratio: o.aspectRatio, resolution: o.resolution }));
 
   const videoOpts = (c: Command) =>
