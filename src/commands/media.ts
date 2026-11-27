@@ -13,9 +13,10 @@ import { IMAGE_MODEL_KEYS, VIDEO_MODEL_KEYS } from '../lib/media-models.js';
 import { planImage, planVideo, type MediaPlan, type Prop, type VideoAction } from '../lib/media-plan.js';
 
 // The shortcut verbs: generate / edit / extend. They use the models of the
-// WaveSpeed /chat page and, unlike `run`, deliberately adapt the request to the
-// chosen model (endpoint, enum snapping, prompt references). Every adaptation
-// is printed, and `--estimate` shows the final input without spending anything.
+// WaveSpeed /chat page and, unlike `run`, pick the endpoint for the inputs and
+// rename prompt references for the chosen model. A value the model does not take
+// is an error naming what it takes; `--estimate` shows the final input without
+// spending anything.
 // `wavespeed run <model>` stays the exact, unmodified path.
 
 async function catalogProps(modelId: string): Promise<Record<string, Prop> | null> {
@@ -142,7 +143,7 @@ export function registerMedia(program: Command): void {
   addCommon(generate.command('image'), IMAGE_MODEL_KEYS)
     .description('Create an image; with --image, use the pictures as subject/product/face/style')
     .option('--image <ref...>', 'Reference image URL or @path (repeatable)', collect, [])
-    .option('--aspect-ratio <r>', 'e.g. 1:1, 16:9, 9:16 (snapped to what the model supports)')
+    .option('--aspect-ratio <r>', 'e.g. 1:1, 16:9, 9:16 (a ratio the model does not offer is an error)')
     .option('--resolution <r>', '0.5k, 1k, 1.5k, 2k, 3k or 4k (a size the model does not offer is an error)')
     .action((prompt, o) => execute(prompt, o, (a) => planImage(a as any, catalogProps), { reference_images: o.image }, { aspect_ratio: o.aspectRatio, resolution: o.resolution }));
 
