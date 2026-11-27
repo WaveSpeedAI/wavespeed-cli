@@ -29,7 +29,7 @@ const collect = (v: string, prev: string[]) => [...prev, v];
 function addCommon(cmd: Command, models: string[]): Command {
   return cmd
     .argument('<prompt>', 'What to create or change. Refer to media as "@image 1", "@video 1", "@audio 1".')
-    .option('-m, --model <name>', `Model (${models.join(', ')}); default ${models[0]}. Without it another model is used only if the default cannot take the inputs`)
+    .option('-m, --model <name>', `Model (${models.join(', ')}); default ${models[0]}. Inputs the model cannot take are an error that names the models that can`)
     .option('--estimate', 'Show the endpoint, final input and price, then stop without submitting')
     .option('--download [path]', 'Save outputs locally (optional path template, e.g. "./out/{index}.{ext}")')
     .option('--output-dir <dir>', 'Directory for --download when no path is given')
@@ -143,14 +143,14 @@ export function registerMedia(program: Command): void {
     .description('Create an image; with --image, use the pictures as subject/product/face/style')
     .option('--image <ref...>', 'Reference image URL or @path (repeatable)', collect, [])
     .option('--aspect-ratio <r>', 'e.g. 1:1, 16:9, 9:16 (snapped to what the model supports)')
-    .option('--resolution <r>', '0.5k, 1k, 1.5k, 2k, 3k or 4k (the closest size the model offers is used)')
+    .option('--resolution <r>', '0.5k, 1k, 1.5k, 2k, 3k or 4k (a size the model does not offer is an error)')
     .action((prompt, o) => execute(prompt, o, (a) => planImage(a as any, catalogProps), { reference_images: o.image }, { aspect_ratio: o.aspectRatio, resolution: o.resolution }));
 
   addCommon(edit.command('image'), IMAGE_MODEL_KEYS)
     .description('Change existing images: edits, restyles, backgrounds, combining several')
     .requiredOption('--image <ref...>', 'Image URL or @path to edit (repeatable)', collect, [])
     .option('--aspect-ratio <r>', 'e.g. 1:1, 16:9, 9:16')
-    .option('--resolution <r>', '0.5k, 1k, 1.5k, 2k, 3k or 4k (the closest size the model offers is used)')
+    .option('--resolution <r>', '0.5k, 1k, 1.5k, 2k, 3k or 4k (a size the model does not offer is an error)')
     .action((prompt, o) => execute(prompt, o, (a) => planImage(a as any, catalogProps), { images: o.image }, { aspect_ratio: o.aspectRatio, resolution: o.resolution }));
 
   const videoOpts = (c: Command) =>

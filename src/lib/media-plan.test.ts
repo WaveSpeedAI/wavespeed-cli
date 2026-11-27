@@ -13,7 +13,7 @@ const IMAGE_CATALOG = catalog({
   'bytedance/seedream-v5.5/edit': { prompt: str, images: list(10), aspect_ratio: str, resolution: str },
   'bytedance/seedream-v5.0-pro': { prompt: str, aspect_ratio: { type: 'string', enum: ['1:1', '16:9', '9:16'] }, resolution: { type: 'string', enum: ['1k', '2k'] } },
   'bytedance/seedream-v5.0-pro/edit': { prompt: str, images: list(10), aspect_ratio: str, resolution: str },
-  'google/nano-banana-2.1/text-to-image': { prompt: str },
+  'google/nano-banana-2.1/text-to-image': { prompt: str, resolution: { type: 'string', enum: ['1k', '2k', '4k'] } },
 });
 
 describe('fitInput', () => {
@@ -27,149 +27,51 @@ describe('fitInput', () => {
       style: { type: 'string', enum: ['vivid', 'natural'] },
     },
   });
-  const input = async (...a: Parameters<typeof fitInput>) => (await fitInput(...a)).input;
 
-  it('drops fields the model does not take and empty values', async () => {
-    expect(await fitInput('m', { prompt: 'a', nope: 1, resolution: '', duration: undefined }, props)).toEqual({ input: { prompt: 'a' }, notes: [] });
-  });
-
-  it('snaps numbers to the nearest enum value and clamps to the range, with a note', async () => {
-    expect(await fitInput('m', { steps: 10, duration: 99 }, props)).toEqual({
-      input: { steps: 8, duration: 15 },
-      notes: ['steps 10 is not offered by m; used 8.', 'duration 99 is not offered by m; used 15.'],
-    });
-    expect(await fitInput('m', { duration: 1 }, props)).toEqual({ input: { duration: 4 }, notes: ['duration 1 is not offered by m; used 4.'] });
-    // In range and already an integer: sent as is, no note.
-    expect(await fitInput('m', { duration: 6, steps: 8 }, props)).toEqual({ input: { duration: 6, steps: 8 }, notes: [] });
-  });
-
-  it('drops any other value outside an enum and says the default is used', async () => {
-    expect(await fitInput('m', { style: 'neon' }, props)).toEqual({
-      input: {},
-      notes: ['style neon is not accepted by m; the model default is used.'],
+  it('sends what the schema takes as it is, skips empty values and spells out requested defaults', async () => {
+    expect(await fitInput('m', { prompt: 'a', resolution: '', duration: undefined, refs: [] }, props)).toEqual({ input: { prompt: 'a' }, notes: [] });
+    expect(await fitInput('m', { duration: 6, steps: 8, refs: ['a', 'b'] }, props, ['duration', 'resolution'])).toEqual({
+      input: { duration: 6, steps: 8, refs: ['a', 'b'], resolution: '720p' },
+      notes: [],
     });
   });
 
-  it('cuts lists to maxItems and spells out requested defaults', async () => {
-    expect(await input('m', { refs: ['a', 'b', 'c'] }, props, ['duration', 'resolution'])).toEqual({
-      refs: ['a', 'b'],
-      duration: 5,
-      resolution: '720p',
-    });
+  it('refuses a value outside an enum and lists the ones the model takes', async () => {
+    await expect(fitInput('m', { resolution: '4k' }, props)).rejects.toThrow('resolution 4k is not offered by m; it takes 720p, 1080p.');
+    await expect(fitInput('m', { style: 'neon' }, props)).rejects.toThrow('style neon is not offered by m; it takes vivid, natural.');
+    await expect(fitInput('m', { steps: 10 }, props)).rejects.toThrow('steps 10 is not offered by m; it takes 4, 8, 16.');
   });
 
-  it('adds no note for a default filled in only for display', async () => {
-    const odd = catalog({ d: { duration: { type: 'integer', minimum: 4, maximum: 15, default: 20 }, size: { type: 'string', enum: ['a'], default: 'b' } } });
-    expect(await fitInput('d', {}, odd, ['duration', 'size'])).toEqual({ input: { duration: 15 }, notes: [] });
+  it('refuses a number outside the range or not whole, more items than allowed, and a field the model has no input for', async () => {
+    await expect(fitInput('m', { duration: 40 }, props)).rejects.toThrow('duration 40 is outside what m takes (4 to 15).');
+    await expect(fitInput('m', { duration: 1 }, props)).rejects.toThrow('duration 1 is outside what m takes (4 to 15).');
+    await expect(fitInput('m', { duration: 5.5 }, props)).rejects.toThrow('duration must be a whole number for m; 5.5 was given.');
+    await expect(fitInput('m', { refs: ['a', 'b', 'c'] }, props)).rejects.toThrow('m takes at most 2 refs; 3 were given.');
+    await expect(fitInput('m', { nope: 1 }, props)).rejects.toThrow('m does not take nope.');
   });
 
   it('fails clearly when the catalog has no schema', async () => {
     await expect(fitInput('zzz', {}, props)).rejects.toThrow('No schema for zzz');
   });
-
-  describe('size tiers', () => {
-    const tiers = catalog({
-      'bytedance/seedream-v5.0-pro': { resolution: { type: 'string', enum: ['1k', '1.5k', '2k'] } },
-      'bytedance/seedream-v5.5': { resolution: { type: 'string', enum: ['1k', '1.5k', '2k', '3k'] } },
-      'google/nano-banana-2/text-to-image': { resolution: { type: 'string', enum: ['0.5k', '1k', '2k', '4k'] } },
-      v: { resolution: { type: 'string', enum: ['480p', '720p', '768p', '1080p', '4k'] } },
-      h3: { resolution: { type: 'string', enum: ['480p', '540p', '768p', '1080p'] } },
-      size: { size: { type: 'string', enum: ['1k', '2k'] } },
-    });
-
-    it('uses the closest tier the model offers (Seedream 5 Pro tops out at 2k)', async () => {
-      expect(await fitInput('bytedance/seedream-v5.0-pro', { resolution: '4k' }, tiers)).toEqual({
-        input: { resolution: '2k' },
-        notes: ['resolution 4k is not offered by bytedance/seedream-v5.0-pro; used 2k.'],
-      });
-      expect(await input('bytedance/seedream-v5.0-pro', { resolution: '1.2k' }, tiers)).toEqual({ resolution: '1k' });
-      expect(await input('bytedance/seedream-v5.0-pro', { resolution: '0.5k' }, tiers)).toEqual({ resolution: '1k' });
-    });
-
-    it('Seedream 5.5 tops out at 3k', async () => {
-      expect(await fitInput('bytedance/seedream-v5.5', { resolution: '4k' }, tiers)).toEqual({
-        input: { resolution: '3k' },
-        notes: ['resolution 4k is not offered by bytedance/seedream-v5.5; used 3k.'],
-      });
-      expect(await fitInput('bytedance/seedream-v5.5', { resolution: '3k' }, tiers)).toEqual({ input: { resolution: '3k' }, notes: [] });
-    });
-
-    it('keeps a tier the model offers (Nano Banana 2 has 0.5k)', async () => {
-      expect(await fitInput('google/nano-banana-2/text-to-image', { resolution: '0.5k' }, tiers)).toEqual({ input: { resolution: '0.5k' }, notes: [] });
-      expect(await input('google/nano-banana-2/text-to-image', { resolution: '1.5k' }, tiers)).toEqual({ resolution: '1k' }); // tie
-    });
-
-    it('ranks p and k tiers on one scale and breaks ties toward the lower tier', async () => {
-      expect(await input('bytedance/seedream-v5.0-pro', { resolution: '1.25k' }, tiers)).toEqual({ resolution: '1k' }); // 1k vs 1.5k
-      expect(await input('v', { resolution: '744p' }, tiers)).toEqual({ resolution: '720p' }); // 720p vs 768p
-      expect(await input('v', { resolution: '2k' }, tiers)).toEqual({ resolution: '1080p' });
-      expect(await input('h3', { resolution: '720p' }, tiers)).toEqual({ resolution: '768p' });
-      expect(await input('h3', { resolution: '4k' }, tiers)).toEqual({ resolution: '1080p' });
-    });
-
-    it('treats any enum of tiers as a size, whatever the key', async () => {
-      expect(await input('size', { size: '4k' }, tiers)).toEqual({ size: '2k' });
-    });
-  });
-
-  describe('aspect ratios', () => {
-    const ratios = catalog({
-      'wavespeed-ai/minimax-h3/text-to-video': { aspect_ratio: { type: 'string', enum: ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', '9:21'] } },
-      'bytedance/seedance-2.5/text-to-video': { aspect_ratio: { type: 'string', enum: ['16:9', '9:16', '4:3', '3:4', '1:1', '21:9'] } },
-      'kwaivgi/kling-v4.0/reference-to-video': { aspect_ratio: { type: 'string', enum: ['auto', '16:9', '9:16', '1:1', '21:9'] } },
-      tie: { aspect_ratio: { type: 'string', enum: ['2:1', '1:2'] } },
-    });
-
-    it('keeps 9:21 on MiniMax H3, which offers it', async () => {
-      expect(await fitInput('wavespeed-ai/minimax-h3/text-to-video', { aspect_ratio: '9:21' }, ratios)).toEqual({ input: { aspect_ratio: '9:21' }, notes: [] });
-    });
-
-    it('uses the closest ratio elsewhere, with a note', async () => {
-      expect(await fitInput('bytedance/seedance-2.5/text-to-video', { aspect_ratio: '9:21' }, ratios)).toEqual({
-        input: { aspect_ratio: '9:16' },
-        notes: ['aspect_ratio 9:21 is not offered by bytedance/seedance-2.5/text-to-video; used 9:16.'],
-      });
-      expect(await input('kwaivgi/kling-v4.0/reference-to-video', { aspect_ratio: '3:1' }, ratios)).toEqual({ aspect_ratio: '21:9' });
-    });
-
-    it('breaks a tie toward the first ratio in enum order, ignoring non-ratio members', async () => {
-      expect(await input('tie', { aspect_ratio: '1:1' }, ratios)).toEqual({ aspect_ratio: '2:1' });
-      // 4:3 is exactly as far from 1:1 as from 16:9; Kling lists 16:9 first (auto is not a ratio).
-      expect(await input('kwaivgi/kling-v4.0/reference-to-video', { aspect_ratio: '4:3' }, ratios)).toEqual({ aspect_ratio: '16:9' });
-    });
-
-    it('keeps 4k when the live Kling 4.0 schema offers it, and rounds it down to the nearest tier where it does not', async () => {
-      const res = (values: string[]) =>
-        catalog({ 'kwaivgi/kling-v4.0/text-to-video': { resolution: { type: 'string', enum: values } } });
-      expect(await input('kwaivgi/kling-v4.0/text-to-video', { resolution: '4k' }, res(['720p', '1080p', '4k']))).toEqual({ resolution: '4k' });
-      expect(await input('kwaivgi/kling-v4.0/text-to-video', { resolution: '4k' }, res(['720p', '1080p']))).toEqual({ resolution: '1080p' });
-    });
-
-    it('treats 4:3 and 3:4 around 1:1 as a tie, whatever the float error', async () => {
-      const both = catalog({ a: { aspect_ratio: { type: 'string', enum: ['4:3', '3:4'] } }, b: { aspect_ratio: { type: 'string', enum: ['3:4', '4:3'] } } });
-      expect(await input('a', { aspect_ratio: '1:1' }, both)).toEqual({ aspect_ratio: '4:3' });
-      expect(await input('b', { aspect_ratio: '1:1' }, both)).toEqual({ aspect_ratio: '3:4' });
-    });
-
-    it('drops a value that is not a ratio', async () => {
-      expect(await fitInput('bytedance/seedance-2.5/text-to-video', { aspect_ratio: 'auto' }, ratios)).toEqual({
-        input: {},
-        notes: ['aspect_ratio auto is not accepted by bytedance/seedance-2.5/text-to-video; the model default is used.'],
-      });
-    });
-  });
 });
 
 describe('planImage', () => {
   it('uses the default model, text to image, when no image is given', async () => {
-    const plan = await planImage({ prompt: 'a cat', aspect_ratio: '4:3' }, IMAGE_CATALOG);
+    const plan = await planImage({ prompt: 'a cat', aspect_ratio: '16:9', resolution: '2k' }, IMAGE_CATALOG);
     expect(plan.modelId).toBe('bytedance/seedream-v5.5');
     expect(plan.label).toBe('Seedream 5.5');
     expect(plan.mode).toBe('generate');
-    // 4:3 is not in this fake schema's enum: the closest ratio is sent, and the notes say so.
-    // 4:3 is as far from 1:1 as from 16:9; 1:1 comes first.
-    expect(plan.input).toEqual({ prompt: 'a cat', aspect_ratio: '1:1' });
-    expect(plan.notes).toEqual(['aspect_ratio 4:3 is not offered by bytedance/seedream-v5.5; used 1:1.']);
+    expect(plan.input).toEqual({ prompt: 'a cat', aspect_ratio: '16:9', resolution: '2k' });
+    expect(plan.notes).toEqual([]);
+  });
+
+  it('refuses a size or ratio the model does not offer and names the models that do', async () => {
+    await expect(planImage({ prompt: 'p', resolution: '4k' }, IMAGE_CATALOG)).rejects.toThrow(
+      'resolution 4k is not offered by bytedance/seedream-v5.5; it takes 1k, 2k. Models that take it: nano-banana-2.1.',
+    );
+    await expect(planImage({ prompt: 'p', aspect_ratio: '4:3' }, IMAGE_CATALOG)).rejects.toThrow(
+      'aspect_ratio 4:3 is not offered by bytedance/seedream-v5.5; it takes 1:1, 16:9, 9:16. No /chat model takes it.',
+    );
   });
 
   it('sends any image to the edit endpoint, whichever list it came in', async () => {
@@ -180,11 +82,9 @@ describe('planImage', () => {
     expect(plan.input.prompt).toBe('make Image 1 a watercolor');
   });
 
-  it('takes a named model and says when images were cut', async () => {
+  it('refuses more images than the model takes instead of cutting them, and takes a named model', async () => {
     const many = Array.from({ length: 12 }, (_, i) => `https://x/${i}.png`);
-    const plan = await planImage({ prompt: 'p', images: many }, IMAGE_CATALOG);
-    expect(plan.input.images).toHaveLength(10);
-    expect(plan.notes[0]).toContain('at most 10 images');
+    await expect(planImage({ prompt: 'p', images: many }, IMAGE_CATALOG)).rejects.toThrow('bytedance/seedream-v5.5/edit takes at most 10 images; 12 were given.');
     const named = await planImage({ prompt: 'p', model: 'nano-banana-2.1' }, IMAGE_CATALOG);
     expect(named.modelId).toBe('google/nano-banana-2.1/text-to-image');
   });
@@ -202,8 +102,6 @@ const video = (extra: Record<string, Prop> = {}): Record<string, Prop> => ({
   ...extra,
 });
 
-// Seedance 2.5 Flash as the live schemas have it: 480p to 4k (1080p / 4k upscaled; the turbo tier 720p / 1080p), 4-30 s, up to
-// 10 images, 5 videos and 5 audios; the standard tier extends (no end image), the turbo tier does not.
 const flash = (extra: Record<string, Prop> = {}, resolutions = ['480p', '720p', '1080p', '4k']): Record<string, Prop> => ({
   ...video(extra),
   duration: { type: 'integer', minimum: 4, maximum: 30, default: 5 },
@@ -214,15 +112,18 @@ const flashTurbo = (extra: Record<string, Prop> = {}) => flash(extra, ['720p', '
 const seedance25 = (extra: Record<string, Prop> = {}) => flash(extra);
 
 const VIDEO_CATALOG = catalog({
-  'bytedance/seedance-2.5-flash/text-to-video-turbo': flashTurbo({ reference_images: list(10), reference_videos: list(5), reference_audios: list(5) }),
-  'bytedance/seedance-2.5-flash/reference-to-video-turbo': flashTurbo({ reference_images: list(10), reference_videos: list(5), reference_audios: list(5) }),
-  'bytedance/seedance-2.5-flash/text-to-video': flash({ reference_images: list(10), reference_videos: list(5), reference_audios: list(5) }),
-  'bytedance/seedance-2.5-flash/reference-to-video': flash({ reference_images: list(10), reference_videos: list(5), reference_audios: list(5) }),
+  // Seedance 2.5 Flash: 480p to 4k (1080p / 4k upscaled), 10 images, 5 videos; the standard tier extends (no end image), a turbo tier at 720p / 1080p does not. (Like the fixture's Seedance it takes no audio
+  // references here, so audio still moves to another model; the live schema does take them.)
+  'bytedance/seedance-2.5-flash/text-to-video': flash({ reference_images: list(10), reference_videos: list(5) }),
+  'bytedance/seedance-2.5-flash/reference-to-video': flash({ reference_images: list(10), reference_videos: list(5) }),
   'bytedance/seedance-2.5-flash/image-to-video': flash({ image: str, last_image: str }),
-  'bytedance/seedance-2.5-flash/video-edit': flash({ video: str, reference_images: list(10), reference_audios: list(5) }),
+  'bytedance/seedance-2.5-flash/video-edit': flash({ video: str, reference_images: list(10) }),
   'bytedance/seedance-2.5-flash/video-extend': flash({ video: str }),
-  'bytedance/seedance-2.5/text-to-video': seedance25({ reference_images: list(30), reference_videos: list(10), reference_audios: list(10) }),
-  'bytedance/seedance-2.5/reference-to-video': seedance25({ reference_images: list(30), reference_videos: list(10), reference_audios: list(10) }),
+  'bytedance/seedance-2.5-flash/text-to-video-turbo': flashTurbo({ reference_images: list(10), reference_videos: list(5) }),
+  'bytedance/seedance-2.5-flash/reference-to-video-turbo': flashTurbo({ reference_images: list(10), reference_videos: list(5) }),
+  'bytedance/seedance-2.5/text-to-video': seedance25({ reference_images: list(30), reference_videos: list(10) }),
+  // The fixture's Seedance takes no audio references, so audio still moves to another model.
+  'bytedance/seedance-2.5/reference-to-video': seedance25({ reference_images: list(30), reference_videos: list(10) }),
   'bytedance/seedance-2.5/image-to-video': seedance25({ image: str, last_image: str }),
   'bytedance/seedance-2.5/video-edit': seedance25({ video: str, reference_images: list(30) }),
   'bytedance/seedance-2.5/video-extend': seedance25({ video: str, last_image: str }),
@@ -244,14 +145,17 @@ describe('planVideo', () => {
     expect(plan.notes).toEqual([]);
   });
 
-  it('fits resolution, ratio and duration to the model and adds each change to the notes', async () => {
-    const plan = await planVideo({ prompt: 'p', model: 'kling-4.0', resolution: '4k', aspect_ratio: '9:21', duration: 40 }, 'generate', VIDEO_CATALOG);
-    expect(plan.input).toMatchObject({ resolution: '1080p', aspect_ratio: '9:16', duration: 15 });
-    expect(plan.notes).toEqual([
-      'resolution 4k is not offered by kwaivgi/kling-v4.0/text-to-video; used 1080p.',
-      'duration 40 is not offered by kwaivgi/kling-v4.0/text-to-video; used 15.',
-      'aspect_ratio 9:21 is not offered by kwaivgi/kling-v4.0/text-to-video; used 9:16.',
-    ]);
+  it('refuses a ratio or duration the model does not take, naming what it takes and who takes it', async () => {
+    await expect(planVideo({ model: 'seedance-2.5', prompt: 'p', aspect_ratio: '9:21' }, 'generate', VIDEO_CATALOG)).rejects.toThrow(
+      'aspect_ratio 9:21 is not offered by bytedance/seedance-2.5/text-to-video; it takes 16:9, 9:16, 1:1. No /chat model takes it.',
+    );
+    await expect(planVideo({ model: 'seedance-2.5', prompt: 'p', duration: 40 }, 'generate', VIDEO_CATALOG)).rejects.toThrow(
+      'duration 40 is outside what bytedance/seedance-2.5/text-to-video takes (4 to 30).',
+    );
+    // The default model is not swapped for one that offers 4k: the error names those models.
+    await expect(planVideo({ prompt: 'p', resolution: '4k' }, 'generate', VIDEO_CATALOG)).rejects.toThrow(
+      /resolution 4k is not offered by alibaba\/wan-3\.0\/text-to-video; it takes 480p, 720p, 768p, 1080p\. Models that take it: .*seedance-2\.5\b/,
+    );
   });
 
   it('animates a first frame and leaves aspect_ratio to the frame', async () => {
@@ -259,6 +163,19 @@ describe('planVideo', () => {
     expect(plan.modelId).toBe('bytedance/seedance-2.5/image-to-video');
     expect(plan.input.image).toBe('https://x/f.png');
     expect(plan.input).not.toHaveProperty('aspect_ratio');
+  });
+
+  it('never turns a first frame into a reference', async () => {
+    // Image to video with references it does not take: refused, not moved to reference to video.
+    await expect(
+      planVideo({ model: 'seedance-2.5', prompt: 'go', first_frame: 'https://x/f.png', reference_images: ['https://x/a.png'] }, 'generate', VIDEO_CATALOG),
+    ).rejects.toThrow(
+      /Seedance 2\.5 does not take reference_images for image to video\. No \/chat video model takes them\./,
+    );
+    // A missing schema is said as such.
+    await expect(planVideo({ model: 'minimax-h3', prompt: 'go', first_frame: 'https://x/f.png' }, 'generate', VIDEO_CATALOG)).rejects.toThrow(
+      'No schema for wavespeed-ai/minimax-h3/image-to-video',
+    );
   });
 
   it('sends references to the dedicated endpoint where one exists, with the model syntax and field names', async () => {
@@ -272,109 +189,58 @@ describe('planVideo', () => {
     expect(kling.input).not.toHaveProperty('reference_images');
   });
 
-  it('puts Seedance references on reference to video', async () => {
-    const plan = await planVideo({ model: 'seedance-2.5', prompt: 'p', reference_images: ['https://x/a.png'] }, 'generate', VIDEO_CATALOG);
+  it('puts Seedance references on reference to video, up to its own limits', async () => {
+    const many = Array.from({ length: 11 }, (_, i) => `https://x/${i}.png`);
+    const plan = await planVideo({ model: 'seedance-2.5', prompt: 'p', reference_images: many }, 'generate', VIDEO_CATALOG);
     expect(plan.modelId).toBe('bytedance/seedance-2.5/reference-to-video');
-    expect(plan.input.reference_images).toEqual(['https://x/a.png']);
+    expect(plan.input.reference_images).toHaveLength(11);
+    // Flash takes 10: refused, not trimmed.
+    await expect(planVideo({ prompt: 'p', model: 'seedance-2.5-flash', reference_images: many }, 'generate', VIDEO_CATALOG)).rejects.toThrow(
+      /takes at most 10 reference_images; 11 were given\. Models that take it: .*seedance-2\.5\b/,
+    );
   });
 
-  it('takes audio references on Seedance 2.5', async () => {
-    const plan = await planVideo({ model: 'seedance-2.5', prompt: 'p', reference_audios: ['https://x/a.mp3'] }, 'generate', VIDEO_CATALOG);
-    expect(plan.modelId).toBe('bytedance/seedance-2.5/reference-to-video');
-    expect(plan.input.reference_audios).toEqual(['https://x/a.mp3']);
-    expect(plan.notes).toEqual([]);
+  it('keeps every tier Seedance 2.5 offers on it, never on its turbo tier', async () => {
+    for (const resolution of ['480p', '720p', '1080p', '4k']) {
+      const plan = await planVideo({ model: 'seedance-2.5', prompt: 'p', resolution }, 'generate', VIDEO_CATALOG);
+      expect(plan.modelId).toBe('bytedance/seedance-2.5/text-to-video');
+      expect(plan.input.resolution).toBe(resolution);
+    }
+    await expect(planVideo({ prompt: 'p', model: 'seedance-2.5-flash-turbo', resolution: '4k' }, 'generate', VIDEO_CATALOG)).rejects.toThrow(
+      'resolution 4k is not offered by bytedance/seedance-2.5-flash/text-to-video-turbo; it takes 720p, 1080p.',
+    );
   });
 
-  it('keeps a Seedance 2.5 extend on it, which has the extend endpoint', async () => {
-    const plan = await planVideo({ model: 'seedance-2.5', prompt: 'p', video: 'https://x/v.mp4' }, 'extend', VIDEO_CATALOG);
-    expect(plan.modelId).toBe('bytedance/seedance-2.5/video-extend');
-    expect(plan.label).toBe('Seedance 2.5');
-    // Its extend takes an end image, so a request with one stays on it.
-    const withEnd = await planVideo({ model: 'seedance-2.5', prompt: 'p', video: 'https://x/v.mp4', last_frame: 'https://x/e.png' }, 'extend', VIDEO_CATALOG);
-    expect(withEnd.modelId).toBe('bytedance/seedance-2.5/video-extend');
+  it('keeps Wan 3.0, the default, for audio references, since it takes them', async () => {
+    const plan = await planVideo({ prompt: 'p', reference_audios: ['https://x/a.mp3'] }, 'generate', VIDEO_CATALOG);
+    expect(plan.modelId).toBe('alibaba/wan-3.0/reference-to-video');
   });
 
-  it('keeps a Seedance 2.5 request on it and fits it, whatever tier it asks for', async () => {
-    // 768p is MiniMax H3's tier, not Seedance 2.5's: the request is not moved to another model, it is fitted to the default.
-    const plan = await planVideo({ model: 'seedance-2.5', prompt: 'p', resolution: '768p' }, 'generate', VIDEO_CATALOG);
-    expect(plan.modelId).toBe('bytedance/seedance-2.5/text-to-video');
-    expect(plan.notes[0]).toContain('resolution 768p is not offered');
-    const none = await planVideo({ model: 'seedance-2.5', prompt: 'p', resolution: '8k' }, 'generate', VIDEO_CATALOG);
-    expect(none.modelId).toBe('bytedance/seedance-2.5/text-to-video');
-    expect(none.notes[0]).toContain('resolution 8k is not offered');
-  });
-
-  it('does not switch a named model: it keeps to the references the model takes', async () => {
-    const audios = Array.from({ length: 6 }, (_, i) => `https://x/${i}.mp3`);
-    const plan = await planVideo({ prompt: 'p', model: 'seedance-2.5-flash', reference_audios: audios }, 'generate', VIDEO_CATALOG);
-    expect(plan.modelId).toBe('bytedance/seedance-2.5-flash/reference-to-video');
-    expect(plan.input.reference_audios).toHaveLength(5);
+  it('refuses inputs the model cannot take in any mode and names who can, named or not', async () => {
+    await expect(planVideo({ prompt: 'p', model: 'seedance-2.5', reference_audios: ['https://x/a.mp3'] }, 'generate', VIDEO_CATALOG)).rejects.toThrow(
+      /Seedance 2\.5 does not take reference_audios for reference to video\. Models that take them: .*minimax-h3 \(reference to video\)/,
+    );
   });
 
   it('edits and extends through the edit and extend endpoints', async () => {
     const edit = await planVideo({ model: 'seedance-2.5', prompt: 'p', video: 'https://x/v.mp4', reference_images: ['https://x/a.png'] }, 'edit', VIDEO_CATALOG);
     expect(edit.modelId).toBe('bytedance/seedance-2.5/video-edit');
     expect(edit.input.video).toBe('https://x/v.mp4');
-    const extend = await planVideo({ prompt: 'p', model: 'seedance-2.5', video: 'https://x/v.mp4', last_frame: 'https://x/e.png', duration: 6 }, 'extend', VIDEO_CATALOG);
+    const extend = await planVideo({ model: 'seedance-2.5', prompt: 'p', video: 'https://x/v.mp4', duration: 6 }, 'extend', VIDEO_CATALOG);
     expect(extend.modelId).toBe('bytedance/seedance-2.5/video-extend');
-    expect(extend.input).toMatchObject({ video: 'https://x/v.mp4', last_image: 'https://x/e.png', duration: 6 });
-  });
-
-  it('keeps a 1080p or 4k Seedance 2.5 request on it, which offers them, and never on its turbo tier', async () => {
-    for (const resolution of ['480p', '720p', '1080p', '4k']) {
-      const plan = await planVideo({ model: 'seedance-2.5', prompt: 'p', resolution }, 'generate', VIDEO_CATALOG);
-      expect(plan.modelId).toBe('bytedance/seedance-2.5/text-to-video');
-      expect(plan.input).toMatchObject({ resolution });
-      expect(plan.notes).toEqual([]);
-    }
-  });
-
-  it('keeps more reference media than Flash takes on Seedance 2.5 instead of trimming it', async () => {
-    // Flash takes 10 images, 5 videos and 5 audios; Seedance 2.5 takes 30, 10 and 10.
-    const images = Array.from({ length: 11 }, (_, i) => `https://x/${i}.png`);
-    const plan = await planVideo({ model: 'seedance-2.5', prompt: 'p', reference_images: images }, 'generate', VIDEO_CATALOG);
-    expect(plan.modelId).toBe('bytedance/seedance-2.5/reference-to-video');
-    expect(plan.input.reference_images).toEqual(images);
-    const videos = Array.from({ length: 6 }, (_, i) => `https://x/${i}.mp4`);
-    expect((await planVideo({ model: 'seedance-2.5', prompt: 'p', reference_videos: videos }, 'generate', VIDEO_CATALOG)).modelId).toBe('bytedance/seedance-2.5/reference-to-video');
-    const audios = Array.from({ length: 6 }, (_, i) => `https://x/${i}.mp3`);
-    expect((await planVideo({ model: 'seedance-2.5', prompt: 'p', reference_audios: audios }, 'generate', VIDEO_CATALOG)).modelId).toBe('bytedance/seedance-2.5/reference-to-video');
-  });
-
-  it('uses the turbo tier only when it is named, at its own resolutions', async () => {
-    const plan = await planVideo({ prompt: 'p', model: 'seedance-2.5-flash-turbo', resolution: '4k' }, 'generate', VIDEO_CATALOG);
-    expect(plan.modelId).toBe('bytedance/seedance-2.5-flash/text-to-video-turbo');
-    expect(plan.input).toMatchObject({ resolution: '1080p' });
-    expect(plan.notes[0]).toContain('used 1080p');
-  });
-
-  it('keeps a named Flash at its limits and when the resolution is one it offers', async () => {
-    const images = Array.from({ length: 10 }, (_, i) => `https://x/${i}.png`);
-    const plan = await planVideo({ prompt: 'p', model: 'seedance-2.5-flash', resolution: '480p', reference_images: images }, 'generate', VIDEO_CATALOG);
-    expect(plan.modelId).toBe('bytedance/seedance-2.5-flash/reference-to-video');
-    expect(plan.input).toMatchObject({ resolution: '480p' });
-  });
-
-  it('fits a named Flash model to its limits and says so, as for every named model', async () => {
-    const plan = await planVideo({ prompt: 'p', model: 'seedance-2.5-flash', duration: 40 }, 'generate', VIDEO_CATALOG);
-    expect(plan.modelId).toBe('bytedance/seedance-2.5-flash/text-to-video');
-    expect(plan.input).toMatchObject({ duration: 30 });
-    expect(plan.notes).toEqual(['duration 40 is not offered by bytedance/seedance-2.5-flash/text-to-video; used 30.']);
-    const many = Array.from({ length: 11 }, (_, i) => `https://x/${i}.png`);
-    const trimmed = await planVideo({ prompt: 'p', model: 'seedance-2.5-flash', reference_images: many }, 'generate', VIDEO_CATALOG);
-    expect(trimmed.input.reference_images).toHaveLength(10);
-  });
-
-  it('extends on Flash when it is named, and not on its turbo tier', async () => {
-    const plan = await planVideo({ prompt: 'p', model: 'seedance-2.5-flash', video: 'https://x/v.mp4', resolution: '4k' }, 'extend', VIDEO_CATALOG);
-    expect(plan.modelId).toBe('bytedance/seedance-2.5-flash/video-extend');
-    expect(plan.input).toMatchObject({ video: 'https://x/v.mp4', resolution: '4k' });
-    // The turbo tier has no extend endpoint: the error names the default, which can.
-    await expect(planVideo({ prompt: 'p', model: 'seedance-2.5-flash-turbo', video: 'https://x/v.mp4' }, 'extend', VIDEO_CATALOG)).rejects.toThrow(/cannot extend videos\. Try another video model, such as wan-3\.0\./);
+    expect(extend.input).toMatchObject({ video: 'https://x/v.mp4', duration: 6 });
+    const withEnd = await planVideo({ model: 'seedance-2.5', prompt: 'p', video: 'https://x/v.mp4', last_frame: 'https://x/e.png', duration: 6 }, 'extend', VIDEO_CATALOG);
+    expect(withEnd.input).toMatchObject({ video: 'https://x/v.mp4', last_image: 'https://x/e.png', duration: 6 });
   });
 
   it('cannot extend on a turbo model', async () => {
-    await expect(planVideo({ prompt: 'p', model: 'seedance-2.5-turbo', video: 'https://x/v.mp4' }, 'extend', VIDEO_CATALOG)).rejects.toThrow('cannot extend');
+    await expect(planVideo({ prompt: 'p', model: 'seedance-2.5-turbo', video: 'https://x/v.mp4' }, 'extend', VIDEO_CATALOG)).rejects.toThrow('cannot extend videos');
+  });
+
+  it('extends on a named Flash at 4k', async () => {
+    const plan = await planVideo({ prompt: 'p', model: 'seedance-2.5-flash', video: 'https://x/v.mp4', resolution: '4k' }, 'extend', VIDEO_CATALOG);
+    expect(plan.modelId).toBe('bytedance/seedance-2.5-flash/video-extend');
+    expect(plan.input).toMatchObject({ resolution: '4k' });
   });
 
   it('rejects a model that is not on the /chat list', async () => {
